@@ -4,3 +4,7 @@ version = "0.1.0"
 authors = ["julise"]
 
 [dependencies]
+futures = "0.1"
+tokio = "0.1"
+sysfs_gpio = { version = "0.5", features = ["tokio"] }
+ctrlc = { version = "3.1.1", features = ["termination"] }
