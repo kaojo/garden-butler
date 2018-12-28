@@ -9,6 +9,7 @@ use std::time::Duration;
 use futures::{Future, lazy, Stream};
 use sysfs_gpio::Error;
 use tokio::reactor::Handle;
+use tokio::runtime::Runtime;
 
 use gpio::{PinLayout, ToggleValve};
 
@@ -52,17 +53,7 @@ fn main() {
     run_start_sequence(&layout).expect("StartSequence run.");
     power_on(&layout).expect("Power Pin turned on.");
 
-    // Create an infinite stream of "Ctrl+C" notifications. Each item received
-    // on this stream may represent multiple ctrl-c signals.
-    let ctrl_c = tokio_signal::ctrl_c().flatten_stream().map_err(|err| println!("error = {:?}", err));
-
-    // Process each ctrl-c as it comes in
-    let prog = ctrl_c.for_each(move |()| {
-        println!("ctrl-c received!");
-        layout.unexport_all().expect("Should unexport all exported gpio pins.");
-        let handle = Handle::current();
-        Ok(())
-    });
+    let mut rt = Runtime::new().unwrap();
 
     let button_streams = lazy(move || {
         for toggle_valve in layout_clone.get_valve_pins() {
@@ -82,10 +73,18 @@ fn main() {
         }
         Ok(())
     });
-    let select = prog.select(button_streams).map(|_| ()).map_err(|_| ());
-    tokio::run(select);
-    // let app = button_streams.join(prog).map(|_| ()).map_err(|err| println!("error = {:?}", err));
-    // tokio:run(app)
+    rt.spawn(button_streams);
+
+    // wait until program is terminated
+    let ctrl_c = tokio_signal::ctrl_c().flatten_stream().take(1).map_err(|err| println!("error = {:?}", err));
+
+    // Process each ctrl-c as it comes in
+    let prog = ctrl_c.for_each(move |()| {
+        println!("ctrl-c received!");
+        layout.unexport_all().expect("Should unexport all exported gpio pins.");
+        Ok(())
+    });
+    rt.block_on(prog);
 
     println!("Exiting garden buttler ...");
 }
