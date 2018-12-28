@@ -5,6 +5,6 @@ authors = ["julise"]
 
 [dependencies]
 futures = "0.1"
-tokio-core = "0.1"
-sysfs_gpio = { version = "0.5", features = ["tokio"] }
-ctrlc = { version = "3.1.1", features = ["termination"] }
+tokio = "0.1.13"
+tokio-signal = { version = "0.2.7" }
+sysfs_gpio = { path = "../rust-sysfs-gpio", features = ["use_tokio"] }

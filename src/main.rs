@@ -1,18 +1,18 @@
-mod gpio;
-
-extern crate ctrlc;
 extern crate futures;
 extern crate sysfs_gpio;
-extern crate tokio_core;
+extern crate tokio;
+extern crate tokio_signal;
 
-use futures::{Future, Stream};
-use gpio::{PinLayout, ToggleValve};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
+
+use futures::{Future, lazy, Stream};
 use sysfs_gpio::Error;
-use tokio_core::reactor::{Core, Handle};
+use tokio::reactor::Handle;
+
+use gpio::{PinLayout, ToggleValve};
+
+mod gpio;
 
 fn run_start_sequence(pin_layout: &PinLayout) -> Result<(), Error> {
     println!("Garden buttler starting ...");
@@ -45,47 +45,47 @@ fn power_on(layout: &PinLayout) -> Result<(), Error> {
     Ok(())
 }
 
-fn stream_button_presses(handle: &Handle, layout: &PinLayout) -> Result<(), Error> {
-    for toggle_valve in &layout.get_valve_pins() {
-        let button_pin = toggle_valve.get_button_pin();
-        let valve_pin = toggle_valve.get_valve_pin().clone();
-        handle.spawn(
-            button_pin
-                .get_value_stream(&handle)?
-                .for_each(move |_val| {
-                    let new_val = 1 - valve_pin.get_value()?;
-                    valve_pin.set_value(new_val)?;
-                    Ok(())
-                })
-                .map_err(|_| ()),
-        );
-    }
-    Ok(())
-}
-
 fn main() {
     let layout = PinLayout::new(23, 17, vec![ToggleValve::new(27, 22)]);
-
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
     let layout_clone = layout.clone();
-    ctrlc::set_handler(move || {
-        println!("Shutting down garden buttler ...");
-        layout_clone
-            .unexport_all()
-            .expect("Unexport all gpio pins.");
-        r.store(false, Ordering::SeqCst);
-    }).expect("Ctrl-C handler");
 
     run_start_sequence(&layout).expect("StartSequence run.");
     power_on(&layout).expect("Power Pin turned on.");
 
-    let mut l = Core::new().expect("Tokio Core created.");
-    let handle = l.handle();
-    stream_button_presses(&handle, &layout).expect("Stream button presses.");
-    while running.load(Ordering::SeqCst) {
-        l.turn(None);
-    }
+    // Create an infinite stream of "Ctrl+C" notifications. Each item received
+    // on this stream may represent multiple ctrl-c signals.
+    let ctrl_c = tokio_signal::ctrl_c().flatten_stream().map_err(|err| println!("error = {:?}", err));
+
+    // Process each ctrl-c as it comes in
+    let prog = ctrl_c.for_each(move |()| {
+        println!("ctrl-c received!");
+        layout.unexport_all().expect("Should unexport all exported gpio pins.");
+        let handle = Handle::current();
+        Ok(())
+    });
+
+    let button_streams = lazy(move || {
+        for toggle_valve in layout_clone.get_valve_pins() {
+            let button_pin = toggle_valve.get_button_pin();
+            let valve_pin = toggle_valve.get_valve_pin().clone();
+            tokio::spawn(
+                button_pin
+                    .get_value_stream().expect("Expect a valid value stream.")
+                    .for_each(move |_val| {
+                        let new_val = 1 - valve_pin.get_value()?;
+                        valve_pin.set_value(new_val)?;
+                        Ok(())
+                    }).map_err(|err| {
+                    println!("error = {:?}", err)
+                }),
+            );
+        }
+        Ok(())
+    });
+    let select = prog.select(button_streams).map(|_| ()).map_err(|_| ());
+    tokio::run(select);
+    // let app = button_streams.join(prog).map(|_| ()).map_err(|err| println!("error = {:?}", err));
+    // tokio:run(app)
 
     println!("Exiting garden buttler ...");
 }

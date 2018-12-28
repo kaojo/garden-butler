@@ -96,4 +96,5 @@ impl ToggleValve {
     pub fn get_button_pin(&self) -> &Pin {
         &self.button_pin
     }
+
 }
