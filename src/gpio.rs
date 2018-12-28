@@ -2,7 +2,6 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use futures::{Future, lazy, Stream};
-use futures::Lazy;
 use sysfs_gpio::{Direction, Edge, Error, Pin};
 
 #[derive(Clone)]

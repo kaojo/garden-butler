@@ -3,7 +3,6 @@ extern crate sysfs_gpio;
 extern crate tokio;
 extern crate tokio_signal;
 
-
 use futures::{Future, Stream};
 use tokio::runtime::Runtime;
 
@@ -14,7 +13,6 @@ mod gpio;
 fn main() {
     println!("Garden buttler starting ...");
     let layout = PinLayout::new(23, 17, vec![ToggleValve::new(27, 22)]);
-    let layout_clone = layout.clone();
 
     layout.run_start_sequence().expect("StartSequence run.");
     layout.power_on().expect("Power Pin turned on.");
@@ -34,7 +32,7 @@ fn main() {
         layout.unexport_all().expect("Should unexport all exported gpio pins.");
         Ok(())
     });
-    rt.block_on(prog);
+    rt.block_on(prog).expect("Should wait until app is terminated");
 
     println!("Exiting garden buttler ...");
 }
