@@ -1,0 +1,11 @@
+{
+  "power" : 23,
+  "error" : 17,
+  "valves" : [
+    {
+      "valve" : 27,
+      "button": 22,
+      "status_led": null
+    }
+  ]
+}

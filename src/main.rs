@@ -1,4 +1,8 @@
+extern crate config;
 extern crate futures;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 extern crate sysfs_gpio;
 extern crate tokio;
 extern crate tokio_signal;
@@ -6,13 +10,25 @@ extern crate tokio_signal;
 use futures::{Future, Stream};
 use tokio::runtime::Runtime;
 
-use gpio::{PinLayout, ToggleValve};
+use embedded::{LayoutConfig, PinLayout};
 
-mod gpio;
+mod embedded;
 
 fn main() {
     println!("Garden buttler starting ...");
-    let layout = PinLayout::new(23, 17, vec![ToggleValve::new(27, 22)]);
+
+    let mut settings = config::Config::default();
+    settings
+        // Add in `./Layout.toml`
+        .merge(config::File::new("layout", config::FileFormat::Json)).unwrap()
+        // Add in settings from the environment (with a prefix of APP)
+        // Eg.. `GB_DEBUG=1 ./target/app` would set the `debug` key
+        .merge(config::Environment::with_prefix("LAYOUT")).unwrap();
+
+    let layout_config = settings.try_into::<LayoutConfig>().expect("Layout config contains errors");
+    println!("{:?}",layout_config);
+
+    let layout = PinLayout::from_config(&layout_config);
 
     layout.run_start_sequence().expect("StartSequence run.");
     layout.power_on().expect("Power Pin turned on.");
