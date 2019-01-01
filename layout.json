@@ -5,7 +5,12 @@
     {
       "valve" : 27,
       "button": 22,
-      "status_led": null
+      "status_led": 24
+    },
+    {
+      "valve" : 10,
+      "button": 9,
+      "status_led": 11
     }
   ]
 }

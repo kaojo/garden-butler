@@ -41,6 +41,7 @@ impl PinLayout {
             set_pin_value(&error_led, 1);
             for v in &valves {
                 v.get_valve_pin().set_value(1)?;
+                set_pin_value(v.get_status_led_pin(), 1);
             }
 
             sleep(Duration::from_millis(*millis));
@@ -48,6 +49,7 @@ impl PinLayout {
             set_pin_value(&error_led, 0);
             for v in &valves {
                 v.get_valve_pin().set_value(0)?;
+                set_pin_value(v.get_status_led_pin(), 0);
             }
 
             sleep(Duration::from_millis(200));
