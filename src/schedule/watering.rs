@@ -6,27 +6,30 @@ use std::time::Duration;
 use chrono::Local;
 use cron::Schedule;
 use futures::{Future, Stream};
+use tokio::runtime::Runtime;
 use tokio_channel::oneshot::{channel, Sender};
 use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
-use embedded::PinLayout;
-use schedule::settings::WateringScheduleConfig;
+use embedded::{PinLayout, ToggleValve};
+use schedule::settings::{WateringScheduleConfig, WateringScheduleConfigs};
 
 pub struct WateringScheduler {
     // key = valve pin number, value = sender that shuts off the schedule
-    senders: HashMap<u8, Sender<()>>,
+    configs: WateringScheduleConfigs,
+    senders: HashMap<u64, Sender<()>>,
     layout: PinLayout,
 }
 
 impl WateringScheduler {
-    pub fn new(layout: PinLayout) -> WateringScheduler {
+    pub fn new(configs: WateringScheduleConfigs, layout: PinLayout) -> WateringScheduler {
         let senders = HashMap::new();
-        WateringScheduler { senders, layout }
+        WateringScheduler { senders, layout, configs }
     }
 
-    pub fn delete_schedule(&mut self, valve_pin: &u8) -> Result<(), ()> {
+    /// TODO test method
+    pub fn delete_schedule(&mut self, valve_pin: &u64) -> Result<(), ()> {
         let sender = self.senders.remove(valve_pin);
         match sender {
             None => Err(()),
@@ -37,33 +40,55 @@ impl WateringScheduler {
         }
     }
 
-    pub fn create_schedule(
-        &mut self,
-        schedule_config: WateringScheduleConfig,
-    ) -> Result<impl Future<Item=(), Error=()> + Send, ()> {
-        let valve_pin = schedule_config.get_valve();
-        let (sender, receiver) = channel::<()>();
-        self.senders.insert(valve_pin, sender);
-
-        println!("Creating new schedule for valve pin num {}.", valve_pin);
-        let watering_duration = schedule_config.get_schedule().get_duration().clone();
-        let cron_expression = schedule_config.get_schedule().get_chron_expression();
-        let cron = Schedule::from_str(cron_expression).map_err(|err| println!("{:?}", err))?;
-        let task = CronInterval::new(cron)
-            .for_each(move |instant| {
-                println!("{}: Turning on valve {}.", Local::now().format("%Y-%m-%d][%H:%M:%S"), valve_pin);
-                let turn_off = Delay::new(now().add(Duration::from_secs(watering_duration)))
-                    .and_then(move |_| {
-                        println!("{}: Turning off valve {}.", Local::now().format("%Y-%m-%d][%H:%M:%S"), valve_pin);
-                        Ok(())
-                    })
-                    .map_err(|_| ());
-                tokio::spawn(turn_off);
-                Ok(())
-            })
-            .select2(receiver)
-            .map(|_| ())
-            .map_err(|_| ());
-        Ok(task)
+    pub fn start(&mut self, runtime: &mut Runtime) -> Result<(), ()> {
+        for config in self.configs.get_schedules().iter() {
+            runtime.spawn(create_schedule(&mut self.senders, &self.layout, config)?);
+        }
+        Ok(())
     }
+
+    pub fn create_schedule(&mut self, schedule_config: WateringScheduleConfig) -> Result<impl Future<Item=(), Error=()> + Send, ()> {
+        create_schedule(&mut self.senders, &self.layout, &schedule_config)
+    }
+}
+
+fn find_pin(valve_pin_num: u64, layout: &PinLayout) -> Result<&ToggleValve, ()> {
+    match layout.get_valve_pins().iter().find(|ref valve_pin| valve_pin_num == valve_pin.get_valve_pin().get_pin()) {
+        None => Err(()),
+        Some(pin) => Ok(pin),
+    }
+}
+
+fn create_schedule(senders: &mut HashMap<u64, Sender<()>>, layout: &PinLayout, schedule_config: &WateringScheduleConfig) -> Result<impl Future<Item=(), Error=()> + Send, ()> {
+    let valve_pin_num = schedule_config.get_valve();
+    println!("Creating new schedule for valve pin num {}.", valve_pin_num);
+
+    let toggle_valve = find_pin(valve_pin_num, layout)?.clone();
+
+    let (sender, receiver) = channel::<()>();
+    senders.insert(valve_pin_num, sender);
+
+    let watering_duration = schedule_config.get_schedule().get_duration_seconds().clone();
+    let cron_expression = schedule_config.get_schedule().get_cron_expression();
+    let cron = Schedule::from_str(cron_expression).map_err(|err| println!("{:?}", err))?;
+    let task = CronInterval::new(cron)
+        .map_err(|_| ())
+        .for_each(move |_| {
+            println!("{}: Turning on valve {}.", Local::now().format("%Y-%m-%d][%H:%M:%S"), valve_pin_num);
+            toggle_valve.turn_on().map_err(|_| ())?;
+            let clone = toggle_valve.clone();
+            let turn_off = Delay::new(now().add(Duration::from_secs(watering_duration)))
+                .map_err(|_| ())
+                .and_then(move |_| {
+                    println!("{}: Turning off valve {}.", Local::now().format("%Y-%m-%d][%H:%M:%S"), valve_pin_num);
+                    clone.turn_off().map_err(|_| ())?;
+                    Ok(())
+                });
+            tokio::spawn(turn_off);
+            Ok(())
+        })
+        .select2(receiver) // TODO test shutoff
+        .map(|_| ())
+        .map_err(|_| ());
+    Ok(task)
 }

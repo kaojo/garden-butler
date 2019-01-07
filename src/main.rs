@@ -18,7 +18,7 @@ use tokio::runtime::{Builder, Runtime};
 use tokio_timer::clock::Clock;
 
 use embedded::{LayoutConfig, PinLayout};
-use schedule::{ScheduleConfig, WateringScheduleConfig, WateringScheduler};
+use schedule::{WateringScheduleConfigs, WateringScheduler};
 
 mod embedded;
 mod schedule;
@@ -38,18 +38,11 @@ fn main() {
     let button_streams = layout.get_button_streams();
     rt.spawn(button_streams);
 
-    let schedule = ScheduleConfig::new(String::from("5 * * * * *"), 10);
-    println!("{:?}", schedule);
-    let watering_schedule_config = WateringScheduleConfig::new(schedule, 27);
+    let watering_configs = get_watering_configs();
+    println!("{:?}", watering_configs);
 
-    let mut scheduler: WateringScheduler = WateringScheduler::new(layout.clone());
-    let schedule_task = scheduler.create_schedule(watering_schedule_config);
-    match schedule_task {
-        Ok(st) => {
-            rt.spawn(st);
-        }
-        Err(_) => println!("Error creating scheduler task"),
-    }
+    let mut scheduler: WateringScheduler = WateringScheduler::new(watering_configs, layout.clone());
+    scheduler.start(&mut rt).expect("Error starting watering schedules");
 
     // wait until program is terminated
     wait_for_termination(layout, &mut rt);
@@ -68,6 +61,21 @@ fn get_layout_config() -> LayoutConfig {
         .try_into::<LayoutConfig>()
         .expect("Layout config contains errors");
     layout_config
+}
+
+fn get_watering_configs() -> WateringScheduleConfigs {
+    let mut settings = config::Config::default();
+    settings
+        .merge(config::File::new("watering-schedules", config::FileFormat::Json))
+        .unwrap()
+        // Add in settings from the environment (with a prefix of LAYOUT)
+        // Eg.. `LAYOUT_POWER=11 ./target/app` would set the `debug` key
+        .merge(config::Environment::with_prefix("WATERING"))
+        .unwrap();
+    let watering_configs = settings
+        .try_into::<WateringScheduleConfigs>()
+        .expect("Watering schedules config contains errors");
+    watering_configs
 }
 
 fn wait_for_termination(layout: PinLayout, rt: &mut Runtime) {

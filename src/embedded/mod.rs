@@ -39,7 +39,7 @@ impl PinLayout {
             let valves = self.get_valve_pins();
             set_pin_value(&running_led, 1);
             set_pin_value(&error_led, 1);
-            for v in &valves {
+            for v in valves.iter() {
                 v.get_valve_pin().set_value(1)?;
                 set_pin_value(v.get_status_led_pin(), 1);
             }
@@ -47,7 +47,7 @@ impl PinLayout {
             sleep(Duration::from_millis(*millis));
             set_pin_value(&running_led, 0);
             set_pin_value(&error_led, 0);
-            for v in &valves {
+            for v in valves.iter() {
                 v.get_valve_pin().set_value(0)?;
                 set_pin_value(v.get_status_led_pin(), 0);
             }
@@ -86,12 +86,8 @@ impl PinLayout {
         });
     }
 
-    fn get_valve_pins(&self) -> Vec<&ToggleValve> {
-        let mut refs = Vec::with_capacity(self.toggle_valves.len());
-        for i in &self.toggle_valves {
-            refs.push(i);
-        }
-        refs
+    pub fn get_valve_pins(&self) -> &[ToggleValve] {
+        &self.toggle_valves
     }
 
     pub fn unexport_all(&self) -> Result<(), Error> {
@@ -134,6 +130,18 @@ impl ToggleValve {
             status_led_pin: valve.get_status_led_pin_num().map(|p| create_pin(p, Direction::Out)),
             button_pin: valve.get_button_pin_num().map(|p| create_pin(p, Direction::In)),
         }
+    }
+
+    pub fn turn_on(&self) -> Result<(), Error> {
+        self.valve_pin.set_value(1)?;
+        set_pin_value(&self.status_led_pin, 1);
+        Ok(())
+    }
+
+    pub fn turn_off(&self) -> Result<(), Error> {
+        self.valve_pin.set_value(0)?;
+        set_pin_value(&self.status_led_pin, 0);
+        Ok(())
     }
 
     pub fn get_valve_pin(&self) -> &Pin {

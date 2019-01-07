@@ -1,0 +1,18 @@
+{
+  "schedules" : [
+    {
+      "valve": 10,
+      "schedule": {
+        "cron_expression" : "5 * * * * *",
+        "duration_seconds" : 10
+      }
+    },
+    {
+      "valve": 27,
+      "schedule": {
+        "cron_expression" : "0/2 * * * * *",
+        "duration_seconds" : 1
+      }
+    }
+  ]
+}
