@@ -5,8 +5,9 @@ use std::time::Duration;
 
 use chrono::Local;
 use cron::Schedule;
-use futures::Future;
+use futures::{Future, Stream};
 use tokio_channel::oneshot::{channel, Sender};
+use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
@@ -39,41 +40,30 @@ impl WateringScheduler {
     pub fn create_schedule(
         &mut self,
         schedule_config: WateringScheduleConfig,
-    ) -> Result<impl Future<Item = (), Error = ()> + Send, ()> {
+    ) -> Result<impl Future<Item=(), Error=()> + Send, ()> {
         let valve_pin = schedule_config.get_valve();
         let (sender, receiver) = channel::<()>();
         self.senders.insert(valve_pin, sender);
 
         println!("Creating new schedule for valve pin num {}.", valve_pin);
+        let watering_duration = schedule_config.get_schedule().get_duration().clone();
         let cron_expression = schedule_config.get_schedule().get_chron_expression();
         let cron = Schedule::from_str(cron_expression).map_err(|err| println!("{:?}", err))?;
-        match cron.upcoming(Local).next() {
-            Some(next_date) => {
-                let next_millis = next_date.timestamp_millis() - Local::now().timestamp_millis();
-                let next_instant = now().add(Duration::from_millis(next_millis as u64));
-                let turn_on = Delay::new(next_instant)
+        let task = CronInterval::new(cron)
+            .for_each(move |instant| {
+                println!("{}: Turning on valve {}.", Local::now().format("%Y-%m-%d][%H:%M:%S"), valve_pin);
+                let turn_off = Delay::new(now().add(Duration::from_secs(watering_duration)))
                     .and_then(move |_| {
-                    println!("{}: Turning on valve {}.", Local::now().format("%Y-%m-%d][%H:%M:%S"), valve_pin);
-                    Ok(())
-                });
-                let turn_off = Delay::new(
-                    next_instant.add(Duration::from_secs(schedule_config.get_schedule().get_duration().clone()))
-                )
-                .and_then(move |_| {
-                    println!("{}: Turning off valve {}.", Local::now().format("%Y-%m-%d][%H:%M:%S"), valve_pin);
-                    Ok(())
-                })
-                .map_err(|_| ());
-                let abort_schedule = receiver;
-                Ok(turn_on
-                    .select2(abort_schedule)
-                    .map(|_| ())
-                    .map_err(|_| ())
-                    .join(turn_off)
-                    .map(|_| ())
-                    .map_err(|_| ()))
-            }
-            None => Err(()),
-        }
+                        println!("{}: Turning off valve {}.", Local::now().format("%Y-%m-%d][%H:%M:%S"), valve_pin);
+                        Ok(())
+                    })
+                    .map_err(|_| ());
+                tokio::spawn(turn_off);
+                Ok(())
+            })
+            .select2(receiver)
+            .map(|_| ())
+            .map_err(|_| ());
+        Ok(task)
     }
 }
