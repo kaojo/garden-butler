@@ -30,8 +30,8 @@ fn main() {
     println!("{:?}", layout_config);
     let layout = PinLayout::from_config(&layout_config);
 
-    layout.run_start_sequence().expect("StartSequence run.");
-    layout.power_on().expect("Power Pin turned on.");
+    layout.run_start_sequence().expect("StartSequence could not run.");
+    layout.power_on().expect("Power Pin could not be turned on.");
 
     let mut rt = Builder::new().clock(Clock::system()).build().unwrap();
 
@@ -42,7 +42,9 @@ fn main() {
     println!("{:?}", watering_configs);
 
     let mut scheduler: WateringScheduler = WateringScheduler::new(watering_configs, layout.clone());
-    scheduler.start(&mut rt).expect("Error starting watering schedules");
+    if (scheduler.enabled) {
+        scheduler.start(&mut rt).expect("Error starting watering schedules");
+    }
 
     // wait until program is terminated
     wait_for_termination(layout, &mut rt);

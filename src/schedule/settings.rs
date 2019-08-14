@@ -1,5 +1,6 @@
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WateringScheduleConfigs {
+    pub enabled: Option<bool>,
     schedules: Vec<WateringScheduleConfig>
 }
 

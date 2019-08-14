@@ -1,4 +1,5 @@
 {
+  "enabled": false,
   "schedules" : [
     {
       "valve": 10,

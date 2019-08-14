@@ -20,12 +20,14 @@ pub struct WateringScheduler {
     configs: WateringScheduleConfigs,
     senders: HashMap<u64, Sender<()>>,
     layout: PinLayout,
+    pub enabled: bool
 }
 
 impl WateringScheduler {
     pub fn new(configs: WateringScheduleConfigs, layout: PinLayout) -> WateringScheduler {
         let senders = HashMap::new();
-        WateringScheduler { senders, layout, configs }
+        let enabled = configs.enabled.unwrap_or(true);
+        WateringScheduler { senders, layout, configs, enabled }
     }
 
     /// TODO test method
