@@ -69,12 +69,17 @@ impl PinLayout {
             for toggle_valve in clone.get_valve_pins() {
                 if let Some(button_pin) = toggle_valve.get_button_pin() {
                     let valve_pin = toggle_valve.get_valve_pin().clone();
+                    let status_pin = toggle_valve.get_status_led_pin().clone();
                     tokio::spawn(
                         button_pin
                             .get_value_stream().expect("Expect a valid value stream.")
                             .for_each(move |_val| {
                                 let new_val = 1 - valve_pin.get_value()?;
                                 valve_pin.set_value(new_val)?;
+                                match status_pin {
+                                    Some(status) => status.set_value(new_val)?,
+                                    None => (),
+                                }
                                 Ok(())
                             }).map_err(|err| {
                             println!("error = {:?}", err)
