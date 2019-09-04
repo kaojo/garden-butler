@@ -12,7 +12,7 @@ use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
-use embedded::{GpioPinLayout, ValvePinNumber, ToggleValve};
+use embedded::{GpioPinLayout, PinLayout,  ValvePinNumber, ToggleValve};
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
 use std::sync::{Arc, Mutex};
 

@@ -27,6 +27,25 @@ pub struct GpioPinLayout {
     toggle_valves: Vec<Arc<Mutex<GpioToggleValve>>>,
 }
 
+pub trait PinLayout<T> {
+    fn find_pin(&self, valve_pin_num: u64) -> Result<&Arc<Mutex<T>>, ()>;
+}
+
+impl PinLayout<GpioToggleValve> for GpioPinLayout {
+    fn find_pin(&self, valve_pin_num: u64) -> Result<&Arc<Mutex<GpioToggleValve>>, ()> {
+        let result_option = self.get_valve_pins()
+            .iter()
+            .find(|ref valve_pin|
+                valve_pin_num == valve_pin.lock().unwrap().get_valve_pin_num()
+            );
+        match result_option
+            {
+                None => Err(()),
+                Some(pin) => Ok(pin),
+            }
+    }
+}
+
 impl Drop for GpioPinLayout {
     fn drop(&mut self) {
         println!("Drop Pinlayout");
@@ -87,19 +106,6 @@ impl GpioPinLayout {
     fn power_on(&self) -> Result<(), Error> {
         set_pin_value(&self.power_pin, 1);
         Ok(())
-    }
-
-    pub fn find_pin(&self, valve_pin_num: u64) -> Result<&Arc<Mutex<impl ToggleValve>>, ()> {
-        let result_option = self.get_valve_pins()
-            .iter()
-            .find(|ref valve_pin|
-                valve_pin_num == valve_pin.lock().unwrap().get_valve_pin_num()
-            );
-        match result_option
-            {
-                None => Err(()),
-                Some(pin) => Ok(pin),
-            }
     }
 
     pub fn get_button_streams(&self) -> impl Future<Item=(), Error=()> {
