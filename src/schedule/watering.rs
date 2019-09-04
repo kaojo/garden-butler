@@ -71,7 +71,7 @@ fn create_schedule(
     let valve_pin_num = schedule_config.get_valve();
     println!("Creating new schedule for valve pin num {}.", valve_pin_num);
 
-    let toggle_valve = layout.lock().unwrap().find_pin(valve_pin_num)?.clone();
+    let toggle_valve = Arc::clone(layout.lock().unwrap().find_pin(valve_pin_num)?);
 
     let (sender, receiver) = channel::<()>();
     senders.insert(valve_pin_num, sender);
@@ -90,8 +90,8 @@ fn create_schedule(
                 Local::now().format("%Y-%m-%d][%H:%M:%S"),
                 valve_pin_num
             );
-            toggle_valve.turn_on().map_err(|_| ())?;
-            let clone = toggle_valve.clone();
+            toggle_valve.lock().unwrap().turn_on().map_err(|_| ())?;
+            let clone = Arc::clone(&toggle_valve);
             let turn_off = Delay::new(now().add(Duration::from_secs(watering_duration)))
                 .map_err(|_| ())
                 .and_then(move |_| {
@@ -100,7 +100,7 @@ fn create_schedule(
                         Local::now().format("%Y-%m-%d][%H:%M:%S"),
                         valve_pin_num
                     );
-                    clone.turn_off().map_err(|_| ())?;
+                    clone.lock().unwrap().turn_off().map_err(|_| ())?;
                     Ok(())
                 });
             tokio::spawn(turn_off);
