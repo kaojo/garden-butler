@@ -12,7 +12,7 @@ use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
-use embedded::{PinLayout, ToggleValve};
+use embedded::{PinLayout};
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
 use std::sync::{Arc, Mutex};
 
@@ -76,10 +76,9 @@ fn create_schedule(
     let (sender, receiver) = channel::<()>();
     senders.insert(valve_pin_num, sender);
 
-    let watering_duration = schedule_config
+    let watering_duration = *schedule_config
         .get_schedule()
-        .get_duration_seconds()
-        .clone();
+        .get_duration_seconds();
     let cron_expression = schedule_config.get_schedule().get_cron_expression();
     let cron = Schedule::from_str(cron_expression).map_err(|err| println!("{:?}", err))?;
     let task = CronInterval::new(cron)
