@@ -1,7 +1,7 @@
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WateringScheduleConfigs {
     pub enabled: Option<bool>,
-    schedules: Vec<WateringScheduleConfig>
+    schedules: Vec<WateringScheduleConfig>,
 }
 
 impl WateringScheduleConfigs {
@@ -28,8 +28,7 @@ impl WateringScheduleConfig {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ScheduleConfig {
     cron_expression: String,
-    duration_seconds: u64
-    // TODO add end_date_time
+    duration_seconds: u64, // TODO add end_date_time
 }
 
 impl ScheduleConfig {
