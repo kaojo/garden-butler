@@ -89,11 +89,7 @@ fn wait_for_termination(layout: Arc<Mutex<PinLayout>>, rt: &mut Runtime) {
     let ctrl_c = tokio_signal::ctrl_c().flatten_stream().take(1);
     let prog = ctrl_c.for_each(move |()| {
         println!("ctrl-c received!");
-        layout
-            .lock()
-            .unwrap()
-            .unexport_all()
-            .expect("Unexport of GPIO pins failed.");
+        // TODO maybe remove in the future since nothing is done here anymore
         Ok(())
     });
     println!("Garden buttler started ...");

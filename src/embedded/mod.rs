@@ -27,6 +27,13 @@ pub struct PinLayout {
     toggle_valves: Vec<Arc<Mutex<ToggleValve>>>,
 }
 
+impl Drop for PinLayout {
+    fn drop(&mut self) {
+        println!("Drop Pinlayout");
+        self.unexport_all();
+    }
+}
+
 impl PinLayout {
     pub fn from_config(layout: &LayoutConfig) -> PinLayout {
         let result = PinLayout {
@@ -134,7 +141,7 @@ impl PinLayout {
         &self.toggle_valves
     }
 
-    pub fn unexport_all(&self) -> Result<(), Error> {
+    fn unexport_all(&self) -> Result<(), Error> {
         if let Some(pin) = self.power_pin {
             pin.set_value(0)?;
             pin.unexport()?;
