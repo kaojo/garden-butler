@@ -9,6 +9,9 @@ pub use self::configuration::{LayoutConfig, ValveConfig};
 
 mod configuration;
 
+#[derive(PartialEq, Eq, Hash)]
+pub struct ValvePinNumber(pub u64);
+
 pub fn set_pin_value(pin: &Option<Pin>, value: u8) {
     match pin {
         Some(p) => p

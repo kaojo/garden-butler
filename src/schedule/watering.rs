@@ -12,12 +12,9 @@ use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
-use embedded::{PinLayout};
+use embedded::{PinLayout, ValvePinNumber};
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
 use std::sync::{Arc, Mutex};
-
-#[derive(PartialEq, Eq, Hash)]
-struct ValvePinNumber(u64);
 
 pub struct WateringScheduler {
     configs: WateringScheduleConfigs,

@@ -97,6 +97,7 @@ fn wait_for_termination(layout: Arc<Mutex<PinLayout>>, rt: &mut Runtime) {
         Ok(())
     });
     println!("Garden buttler started ...");
+
     rt.block_on(prog)
         .expect("Error waiting until app is terminated with ctrl+c");
     println!("Exiting garden buttler ...");
