@@ -68,16 +68,14 @@ impl GpioPinLayout {
             set_pin_value(&running_led, 1);
             set_pin_value(&error_led, 1);
             for v in valves.iter() {
-                v.lock().unwrap().get_valve_pin().set_value(1)?;
-                set_pin_value(v.lock().unwrap().get_status_led_pin(), 1);
+                v.lock().unwrap().turn_on()?;
             }
 
             sleep(Duration::from_millis(*millis));
             set_pin_value(&running_led, 0);
             set_pin_value(&error_led, 0);
             for v in valves.iter() {
-                v.lock().unwrap().get_valve_pin().set_value(0)?;
-                set_pin_value(v.lock().unwrap().get_status_led_pin(), 0);
+                v.lock().unwrap().turn_off()?;
             }
 
             sleep(Duration::from_millis(200));
@@ -91,11 +89,13 @@ impl GpioPinLayout {
         Ok(())
     }
 
-    pub fn find_pin(&self, valve_pin_num: u64) -> Result<&Arc<Mutex<GpioToggleValve>>, ()> {
-        match self
-            .get_valve_pins()
+    pub fn find_pin(&self, valve_pin_num: u64) -> Result<&Arc<Mutex<impl ToggleValve>>, ()> {
+        let result_option = self.get_valve_pins()
             .iter()
-            .find(|ref valve_pin| valve_pin_num == valve_pin.lock().unwrap().get_valve_pin().get_pin())
+            .find(|ref valve_pin|
+                valve_pin_num == valve_pin.lock().unwrap().get_valve_pin_num()
+            );
+        match result_option
             {
                 None => Err(()),
                 Some(pin) => Ok(pin),
@@ -170,6 +170,7 @@ pub trait ToggleValve {
     fn turn_on(&self) -> Result<(), Error>;
     fn turn_off(&self) -> Result<(), Error>;
     fn toggle(&self) -> Result<(), Error>;
+    fn get_valve_pin_num(&self) -> u64;
 }
 
 impl ToggleValve for GpioToggleValve {
@@ -193,6 +194,10 @@ impl ToggleValve for GpioToggleValve {
             None => (),
         }
         Ok(())
+    }
+
+    fn get_valve_pin_num(&self) -> u64 {
+        self.valve_pin.get_pin()
     }
 }
 
