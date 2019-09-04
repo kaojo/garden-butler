@@ -4,9 +4,9 @@ use std::time::Duration;
 use futures::{Future, lazy, Stream};
 use sysfs_gpio::{Direction, Edge, Error, Pin};
 
-pub use self::settings::{LayoutConfig, ValveConfig};
+pub use self::configuration::{LayoutConfig, ValveConfig};
 
-mod settings;
+mod configuration;
 
 pub fn set_pin_value(pin: &Option<Pin>, value: u8) {
     match pin {

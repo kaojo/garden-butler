@@ -17,9 +17,6 @@ pub struct WateringScheduleConfig {
 }
 
 impl WateringScheduleConfig {
-    pub fn new(schedule: ScheduleConfig, valve: u64) -> Self {
-        WateringScheduleConfig { schedule, valve }
-    }
     pub fn get_schedule(&self) -> &ScheduleConfig {
         &self.schedule
     }
@@ -36,9 +33,6 @@ pub struct ScheduleConfig {
 }
 
 impl ScheduleConfig {
-    pub fn new(cron_expression: String, duration_seconds: u64) -> Self {
-        ScheduleConfig { cron_expression, duration_seconds }
-    }
     pub fn get_cron_expression(&self) -> &String {
         &self.cron_expression
     }

@@ -42,7 +42,7 @@ fn main() {
     println!("{:?}", watering_configs);
 
     let mut scheduler: WateringScheduler = WateringScheduler::new(watering_configs, layout.clone());
-    if (scheduler.enabled) {
+    if scheduler.enabled {
         scheduler.start(&mut rt).expect("Error starting watering schedules");
     }
 

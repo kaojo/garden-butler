@@ -1,6 +1,6 @@
-pub use self::settings::{ScheduleConfig, WateringScheduleConfig, WateringScheduleConfigs};
+pub use self::configuration::{ScheduleConfig, WateringScheduleConfig, WateringScheduleConfigs};
 pub use self::watering::WateringScheduler;
 
-mod settings;
+mod configuration;
 mod watering;
 

@@ -48,10 +48,6 @@ impl WateringScheduler {
         }
         Ok(())
     }
-
-    pub fn create_schedule(&mut self, schedule_config: WateringScheduleConfig) -> Result<impl Future<Item=(), Error=()> + Send, ()> {
-        create_schedule(&mut self.senders, &self.layout, &schedule_config)
-    }
 }
 
 fn find_pin(valve_pin_num: u64, layout: &PinLayout) -> Result<&ToggleValve, ()> {
