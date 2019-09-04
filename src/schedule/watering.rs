@@ -12,21 +12,21 @@ use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
-use embedded::{PinLayout, ValvePinNumber};
+use embedded::{GpioPinLayout, ValvePinNumber, ToggleValve};
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
 use std::sync::{Arc, Mutex};
 
 pub struct WateringScheduler {
     configs: WateringScheduleConfigs,
     senders: HashMap<ValvePinNumber, Sender<()>>,
-    layout: Arc<Mutex<PinLayout>>,
+    layout: Arc<Mutex<GpioPinLayout>>,
     pub enabled: bool,
 }
 
 impl WateringScheduler {
     pub fn new(
         configs: WateringScheduleConfigs,
-        layout: Arc<Mutex<PinLayout>>,
+        layout: Arc<Mutex<GpioPinLayout>>,
     ) -> WateringScheduler {
         let senders = HashMap::new();
         let enabled = configs.enabled.unwrap_or(true);
@@ -64,7 +64,7 @@ impl WateringScheduler {
 
 fn create_schedule(
     senders: &mut HashMap<ValvePinNumber, Sender<()>>,
-    layout: Arc<Mutex<PinLayout>>,
+    layout: Arc<Mutex<GpioPinLayout>>,
     schedule_config: &WateringScheduleConfig,
 ) -> Result<impl Future<Item = (), Error = ()> + Send, ()> {
     let valve_pin_num = schedule_config.get_valve();

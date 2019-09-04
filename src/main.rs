@@ -19,7 +19,7 @@ use futures::{Future, Stream};
 use tokio::runtime::{Builder, Runtime};
 use tokio_timer::clock::Clock;
 
-use embedded::{LayoutConfig, PinLayout};
+use embedded::{LayoutConfig, GpioPinLayout};
 use schedule::{WateringScheduleConfigs, WateringScheduler};
 
 mod embedded;
@@ -31,8 +31,8 @@ fn main() {
 
     let layout_config = get_layout_config();
     println!("{:?}", layout_config);
-    let layout = PinLayout::from_config(&layout_config);
-    let shared_layout: Arc<Mutex<PinLayout>> = Arc::new(Mutex::new(layout));
+    let layout = GpioPinLayout::from_config(&layout_config);
+    let shared_layout: Arc<Mutex<GpioPinLayout>> = Arc::new(Mutex::new(layout));
 
     let button_streams = shared_layout.lock().unwrap().get_button_streams();
     rt.spawn(button_streams);
@@ -49,7 +49,7 @@ fn main() {
     }
 
     // wait until program is terminated
-    wait_for_termination(Arc::clone(&shared_layout), &mut rt);
+    wait_for_termination(&mut rt);
 }
 
 fn get_layout_config() -> LayoutConfig {
@@ -85,16 +85,16 @@ fn get_watering_configs() -> WateringScheduleConfigs {
     watering_configs
 }
 
-fn wait_for_termination(layout: Arc<Mutex<PinLayout>>, rt: &mut Runtime) {
+fn wait_for_termination(rt: &mut Runtime) {
     let ctrl_c = tokio_signal::ctrl_c().flatten_stream().take(1);
     let prog = ctrl_c.for_each(move |()| {
         println!("ctrl-c received!");
         // TODO maybe remove in the future since nothing is done here anymore
+        // right now we only wait till the program is terminated
         Ok(())
     });
     println!("Garden buttler started ...");
 
-    rt.block_on(prog)
-        .expect("Error waiting until app is terminated with ctrl+c");
+    rt.block_on(prog).expect("Error waiting until app is terminated with ctrl+c");
     println!("Exiting garden buttler ...");
 }

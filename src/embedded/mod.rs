@@ -21,22 +21,22 @@ pub fn set_pin_value(pin: &Option<Pin>, value: u8) {
     }
 }
 
-pub struct PinLayout {
+pub struct GpioPinLayout {
     power_pin: Option<Pin>,
     error_pin: Option<Pin>,
-    toggle_valves: Vec<Arc<Mutex<ToggleValve>>>,
+    toggle_valves: Vec<Arc<Mutex<GpioToggleValve>>>,
 }
 
-impl Drop for PinLayout {
+impl Drop for GpioPinLayout {
     fn drop(&mut self) {
         println!("Drop Pinlayout");
-        self.unexport_all();
+        self.unexport_all().expect("Unexport should always work but didn't for some reason.");
     }
 }
 
-impl PinLayout {
-    pub fn from_config(layout: &LayoutConfig) -> PinLayout {
-        let result = PinLayout {
+impl GpioPinLayout {
+    pub fn from_config(layout: &LayoutConfig) -> GpioPinLayout {
+        let result = GpioPinLayout {
             power_pin: layout
                 .get_power_pin_num()
                 .map(|num| create_pin(num, Direction::Out)),
@@ -46,7 +46,7 @@ impl PinLayout {
             toggle_valves: layout
                 .get_valves()
                 .iter()
-                .map(|valve_conf| Arc::new(Mutex::new(ToggleValve::from_config(valve_conf))))
+                .map(|valve_conf| Arc::new(Mutex::new(GpioToggleValve::from_config(valve_conf))))
                 .collect(),
         };
 
@@ -91,7 +91,7 @@ impl PinLayout {
         Ok(())
     }
 
-    pub fn find_pin(&self, valve_pin_num: u64) -> Result<&Arc<Mutex<ToggleValve>>, ()> {
+    pub fn find_pin(&self, valve_pin_num: u64) -> Result<&Arc<Mutex<GpioToggleValve>>, ()> {
         match self
             .get_valve_pins()
             .iter()
@@ -104,7 +104,7 @@ impl PinLayout {
 
     pub fn get_button_streams(&self) -> impl Future<Item=(), Error=()> {
         let valve_pins = self.get_valve_pins();
-        let mut valves: Vec<Arc<Mutex<ToggleValve>>> = Vec::new();
+        let mut valves: Vec<Arc<Mutex<GpioToggleValve>>> = Vec::new();
         for pin in valve_pins {
             valves.push(Arc::clone(&pin))
         }
@@ -119,15 +119,7 @@ impl PinLayout {
                             .expect("Expect a valid value stream.")
                             .for_each(move |_val| {
                                 let clone_raw = clone.lock().unwrap();
-                                let valve_pin = clone_raw.get_valve_pin();
-                                let status_pin = clone_raw.get_status_led_pin();
-                                let new_val = 1 - valve_pin.get_value()?;
-                                valve_pin.set_value(new_val)?;
-                                match status_pin {
-                                    Some(status) => status.set_value(new_val)?,
-                                    None => (),
-                                }
-                                Ok(())
+                                clone_raw.toggle()
                             })
                             .map_err(|err| println!("error = {:?}", err)),
                     );
@@ -137,7 +129,7 @@ impl PinLayout {
         });
     }
 
-    pub fn get_valve_pins(&self) -> &Vec<Arc<Mutex<ToggleValve>>> {
+    pub fn get_valve_pins(&self) -> &Vec<Arc<Mutex<GpioToggleValve>>> {
         &self.toggle_valves
     }
 
@@ -168,15 +160,45 @@ impl PinLayout {
     }
 }
 
-pub struct ToggleValve {
+pub struct GpioToggleValve {
     valve_pin: Pin,
     status_led_pin: Option<Pin>,
     button_pin: Option<Pin>,
 }
 
-impl ToggleValve {
-    pub fn from_config(valve: &ValveConfig) -> ToggleValve {
-        ToggleValve {
+pub trait ToggleValve {
+    fn turn_on(&self) -> Result<(), Error>;
+    fn turn_off(&self) -> Result<(), Error>;
+    fn toggle(&self) -> Result<(), Error>;
+}
+
+impl ToggleValve for GpioToggleValve {
+    fn turn_on(&self) -> Result<(), Error> {
+        self.valve_pin.set_value(1)?;
+        set_pin_value(&self.status_led_pin, 1);
+        Ok(())
+    }
+
+    fn turn_off(&self) -> Result<(), Error> {
+        self.valve_pin.set_value(0)?;
+        set_pin_value(&self.status_led_pin, 0);
+        Ok(())
+    }
+
+    fn toggle(&self) -> Result<(), Error> {
+        let new_val = 1 - self.valve_pin.get_value()?;
+        self.valve_pin.set_value(new_val)?;
+        match self.status_led_pin {
+            Some(status) => status.set_value(new_val)?,
+            None => (),
+        }
+        Ok(())
+    }
+}
+
+impl GpioToggleValve {
+    pub fn from_config(valve: &ValveConfig) -> GpioToggleValve {
+        GpioToggleValve {
             valve_pin: create_pin(valve.get_valve_pin_num(), Direction::Out),
             status_led_pin: valve
                 .get_status_led_pin_num()
@@ -185,18 +207,6 @@ impl ToggleValve {
                 .get_button_pin_num()
                 .map(|p| create_pin(p, Direction::In)),
         }
-    }
-
-    pub fn turn_on(&self) -> Result<(), Error> {
-        self.valve_pin.set_value(1)?;
-        set_pin_value(&self.status_led_pin, 1);
-        Ok(())
-    }
-
-    pub fn turn_off(&self) -> Result<(), Error> {
-        self.valve_pin.set_value(0)?;
-        set_pin_value(&self.status_led_pin, 0);
-        Ok(())
     }
 
     pub fn get_valve_pin(&self) -> &Pin {
