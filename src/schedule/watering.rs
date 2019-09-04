@@ -16,10 +16,12 @@ use embedded::{PinLayout};
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
 use std::sync::{Arc, Mutex};
 
+#[derive(PartialEq, Eq, Hash)]
+struct ValvePinNumber(u64);
+
 pub struct WateringScheduler {
-    // key = valve pin number, value = sender that shuts off the schedule
     configs: WateringScheduleConfigs,
-    senders: HashMap<u64, Sender<()>>,
+    senders: HashMap<ValvePinNumber, Sender<()>>,
     layout: Arc<Mutex<PinLayout>>,
     pub enabled: bool,
 }
@@ -40,7 +42,7 @@ impl WateringScheduler {
     }
 
     /// TODO test method
-    pub fn delete_schedule(&mut self, valve_pin: &u64) -> Result<(), ()> {
+    pub fn delete_schedule(&mut self, valve_pin: &ValvePinNumber) -> Result<(), ()> {
         let sender = self.senders.remove(valve_pin);
         match sender {
             None => Err(()),
@@ -64,7 +66,7 @@ impl WateringScheduler {
 }
 
 fn create_schedule(
-    senders: &mut HashMap<u64, Sender<()>>,
+    senders: &mut HashMap<ValvePinNumber, Sender<()>>,
     layout: Arc<Mutex<PinLayout>>,
     schedule_config: &WateringScheduleConfig,
 ) -> Result<impl Future<Item = (), Error = ()> + Send, ()> {
@@ -74,7 +76,7 @@ fn create_schedule(
     let toggle_valve = Arc::clone(layout.lock().unwrap().find_pin(valve_pin_num)?);
 
     let (sender, receiver) = channel::<()>();
-    senders.insert(valve_pin_num, sender);
+    senders.insert(ValvePinNumber(valve_pin_num), sender);
 
     let watering_duration = *schedule_config
         .get_schedule()
