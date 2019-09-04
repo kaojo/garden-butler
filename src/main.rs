@@ -19,7 +19,7 @@ use futures::{Future, Stream};
 use tokio::runtime::{Builder, Runtime};
 use tokio_timer::clock::Clock;
 
-use embedded::{LayoutConfig, GpioPinLayout};
+use embedded::{LayoutConfig, GpioPinLayout, GpioToggleValve};
 use schedule::{WateringScheduleConfigs, WateringScheduler};
 
 mod embedded;
@@ -40,7 +40,7 @@ fn main() {
     let watering_configs = get_watering_configs();
     println!("{:?}", watering_configs);
 
-    let mut scheduler: WateringScheduler =
+    let mut scheduler: WateringScheduler<GpioPinLayout> =
         WateringScheduler::new(watering_configs, Arc::clone(&shared_layout));
     if scheduler.enabled {
         scheduler

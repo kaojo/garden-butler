@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::ops::Add;
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::Local;
@@ -12,22 +13,21 @@ use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
-use embedded::{GpioPinLayout, PinLayout,  ValvePinNumber, ToggleValve};
+use embedded::{GpioToggleValve, PinLayout, ToggleValve, ValvePinNumber};
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
-use std::sync::{Arc, Mutex};
 
-pub struct WateringScheduler {
+pub struct WateringScheduler<T> where T: PinLayout<GpioToggleValve> + 'static {
     configs: WateringScheduleConfigs,
     senders: HashMap<ValvePinNumber, Sender<()>>,
-    layout: Arc<Mutex<GpioPinLayout>>,
+    layout: Arc<Mutex<T>>,
     pub enabled: bool,
 }
 
-impl WateringScheduler {
+impl<T> WateringScheduler<T> where T: PinLayout<GpioToggleValve> + 'static {
     pub fn new(
         configs: WateringScheduleConfigs,
-        layout: Arc<Mutex<GpioPinLayout>>,
-    ) -> WateringScheduler {
+        layout: Arc<Mutex<T>>,
+    ) -> WateringScheduler<T> {
         let senders = HashMap::new();
         let enabled = configs.enabled.unwrap_or(true);
         WateringScheduler {
@@ -62,11 +62,13 @@ impl WateringScheduler {
     }
 }
 
-fn create_schedule(
+fn create_schedule<T>(
     senders: &mut HashMap<ValvePinNumber, Sender<()>>,
-    layout: Arc<Mutex<GpioPinLayout>>,
+    layout: Arc<Mutex<T>>,
     schedule_config: &WateringScheduleConfig,
-) -> Result<impl Future<Item = (), Error = ()> + Send, ()> {
+) -> Result<impl Future<Item=(), Error=()> + Send, ()>
+    where T: PinLayout<GpioToggleValve> + 'static
+{
     let valve_pin_num = schedule_config.get_valve();
     println!("Creating new schedule for valve pin num {}.", valve_pin_num);
 
