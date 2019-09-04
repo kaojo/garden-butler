@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::ops::Add;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -13,27 +14,30 @@ use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
-use embedded::{GpioToggleValve, PinLayout, ToggleValve, ValvePinNumber};
+use embedded::{PinLayout, ToggleValve, ValvePinNumber};
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
 
-pub struct WateringScheduler<T> where T: PinLayout<GpioToggleValve> + 'static {
+pub struct WateringScheduler<T, U> where T: PinLayout<U> + 'static, U: ToggleValve + Send + 'static {
     configs: WateringScheduleConfigs,
     senders: HashMap<ValvePinNumber, Sender<()>>,
     layout: Arc<Mutex<T>>,
+    toggle_valve_type: PhantomData<U>,
     pub enabled: bool,
 }
 
-impl<T> WateringScheduler<T> where T: PinLayout<GpioToggleValve> + 'static {
+impl<T, U> WateringScheduler<T, U> where T: PinLayout<U> + 'static, U: ToggleValve + Send + 'static {
     pub fn new(
         configs: WateringScheduleConfigs,
         layout: Arc<Mutex<T>>,
-    ) -> WateringScheduler<T> {
+    ) -> WateringScheduler<T, U> {
         let senders = HashMap::new();
         let enabled = configs.enabled.unwrap_or(true);
+        let toggle_valve_type = PhantomData;
         WateringScheduler {
             senders,
             layout,
             configs,
+            toggle_valve_type,
             enabled,
         }
     }
@@ -62,12 +66,12 @@ impl<T> WateringScheduler<T> where T: PinLayout<GpioToggleValve> + 'static {
     }
 }
 
-fn create_schedule<T>(
+fn create_schedule<T, U>(
     senders: &mut HashMap<ValvePinNumber, Sender<()>>,
     layout: Arc<Mutex<T>>,
     schedule_config: &WateringScheduleConfig,
 ) -> Result<impl Future<Item=(), Error=()> + Send, ()>
-    where T: PinLayout<GpioToggleValve> + 'static
+    where T: PinLayout<U> + 'static, U: ToggleValve + Send + 'static
 {
     let valve_pin_num = schedule_config.get_valve();
     println!("Creating new schedule for valve pin num {}.", valve_pin_num);

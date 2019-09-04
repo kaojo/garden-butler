@@ -40,7 +40,7 @@ fn main() {
     let watering_configs = get_watering_configs();
     println!("{:?}", watering_configs);
 
-    let mut scheduler: WateringScheduler<GpioPinLayout> =
+    let mut scheduler: WateringScheduler<GpioPinLayout, GpioToggleValve> =
         WateringScheduler::new(watering_configs, Arc::clone(&shared_layout));
     if scheduler.enabled {
         scheduler
