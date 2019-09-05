@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use embedded::{PinLayout, ToggleValve, ValvePinNumber, ValveStatus, Error};
+use embedded::{Error, PinLayout, ToggleValve, ValvePinNumber, ValveStatus};
 use embedded::ValveStatus::{CLOSED, OPEN};
 
 struct FakePinLayout {
@@ -29,19 +29,27 @@ struct FakeToggleValve {
 
 impl ToggleValve for FakeToggleValve {
     fn turn_on(&mut self) -> Result<(), Error> {
+        println!("Turning on valve {}", self.valve_pin_number.0);
         self.status = OPEN;
         Ok(())
     }
 
     fn turn_off(&mut self) -> Result<(), Error> {
+        println!("Turning off valve {}", self.valve_pin_number.0);
         self.status = CLOSED;
         Ok(())
     }
 
     fn toggle(&mut self) -> Result<(), Error> {
         match self.status {
-            OPEN => { self.status = CLOSED }
-            CLOSED => { self.status = OPEN }
+            OPEN => {
+                println!("Turning off valve {}", self.valve_pin_number.0);
+                self.status = CLOSED
+            }
+            CLOSED => {
+                println!("Turning on valve {}", self.valve_pin_number.0);
+                self.status = OPEN
+            }
         }
         Ok(())
     }
