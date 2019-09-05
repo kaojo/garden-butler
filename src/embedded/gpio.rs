@@ -3,8 +3,8 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use futures::{Future, lazy, Stream};
-use sysfs_gpio::{Direction, Edge, Error, Pin};
-use embedded::{PinLayout, ToggleValve, ValvePinNumber};
+use sysfs_gpio::{Direction, Edge, Pin};
+use embedded::{PinLayout, ToggleValve, ValvePinNumber, Error};
 use embedded::configuration::{LayoutConfig, ValveConfig};
 
 pub struct GpioPinLayout {
@@ -105,6 +105,7 @@ impl GpioPinLayout {
                         button_pin
                             .get_value_stream()
                             .expect("Expect a valid value stream.")
+                            .map_err(|err| Error::from(err))
                             .for_each(move |_val| {
                                 let mut clone_raw = clone.lock().unwrap();
                                 clone_raw.toggle()

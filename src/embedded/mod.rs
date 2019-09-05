@@ -1,6 +1,5 @@
+use core::{convert, fmt};
 use std::sync::{Arc, Mutex};
-
-use sysfs_gpio::{Error};
 
 pub mod configuration;
 pub mod gpio;
@@ -22,5 +21,42 @@ pub trait ToggleValve {
 
 pub enum ValveStatus {
     OPEN,
-    CLOSED
+    CLOSED,
+}
+
+#[derive(Debug)]
+pub enum Error {
+    GPIO(sysfs_gpio::Error),
+    Unexpected(String),
+}
+
+impl ::std::error::Error for Error {
+    fn description(&self) -> &str {
+        match *self {
+            Error::GPIO(ref e) => e.description(),
+            Error::Unexpected(_) => "An Unexpected Error Occurred",
+        }
+    }
+
+    fn cause(&self) -> Option<&::std::error::Error> {
+        match *self {
+            Error::GPIO(ref e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::GPIO(ref e) => e.fmt(f),
+            Error::Unexpected(ref s) => write!(f, "Unexpected: {}", s),
+        }
+    }
+}
+
+impl convert::From<sysfs_gpio::Error> for Error {
+    fn from(e: sysfs_gpio::Error) -> Error {
+        Error::GPIO(e)
+    }
 }

@@ -1,8 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use sysfs_gpio::Error;
-
-use embedded::{PinLayout, ToggleValve, ValvePinNumber, ValveStatus};
+use embedded::{PinLayout, ToggleValve, ValvePinNumber, ValveStatus, Error};
 use embedded::ValveStatus::{CLOSED, OPEN};
 
 struct FakePinLayout {
