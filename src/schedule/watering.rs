@@ -56,6 +56,7 @@ impl<T, U> WateringScheduler<T, U> where T: PinLayout<U> + 'static, U: ToggleVal
 
     pub fn start(&mut self, runtime: &mut Runtime) -> Result<(), ()> {
         for config in self.configs.get_schedules().iter() {
+            println!("Creating watering schedule for valve {}", config.get_valve());
             runtime.spawn(create_schedule(
                 &mut self.senders,
                 Arc::clone(&self.layout),
@@ -74,9 +75,9 @@ fn create_schedule<T, U>(
     where T: PinLayout<U> + 'static, U: ToggleValve + Send + 'static
 {
     let valve_pin_num = schedule_config.get_valve();
-    println!("Creating new schedule for valve pin num {}.", valve_pin_num);
 
     let toggle_valve = Arc::clone(layout.lock().unwrap().find_pin(ValvePinNumber(valve_pin_num))?);
+    println!("Creating new schedule for valve pin num {}.", toggle_valve.lock().unwrap().get_valve_pin_num().0);
 
     let (sender, receiver) = channel::<()>();
     senders.insert(ValvePinNumber(valve_pin_num), sender);

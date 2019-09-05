@@ -6,6 +6,7 @@ extern crate futures;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+#[cfg(feature = "gpio")]
 extern crate sysfs_gpio;
 extern crate tokio;
 extern crate tokio_channel;
@@ -19,7 +20,11 @@ use futures::{Future, Stream};
 use tokio::runtime::{Builder, Runtime};
 use tokio_timer::clock::Clock;
 
-use embedded::configuration::{LayoutConfig};
+use embedded::{PinLayout, ToggleValve};
+use embedded::configuration::LayoutConfig;
+#[cfg(not(feature = "gpio"))]
+use embedded::fake::{FakePinLayout, FakeToggleValve};
+#[cfg(feature = "gpio")]
 use embedded::gpio::{GpioPinLayout, GpioToggleValve};
 use schedule::{WateringScheduleConfigs, WateringScheduler};
 
@@ -28,29 +33,47 @@ mod schedule;
 
 fn main() {
     println!("Garden buttler starting ...");
+
     let mut rt = Builder::new().clock(Clock::system()).build().unwrap();
 
     let layout_config = get_layout_config();
     println!("{:?}", layout_config);
-    let layout = GpioPinLayout::from_config(&layout_config);
-    let shared_layout: Arc<Mutex<GpioPinLayout>> = Arc::new(Mutex::new(layout));
 
-    let button_streams = shared_layout.lock().unwrap().get_button_streams();
-    rt.spawn(button_streams);
+    #[cfg(feature = "gpio")]
+        {
+            println!("Starting garden butler in GPIO mode.");
+            let layout = GpioPinLayout::from_config(&layout_config);
+            let shared_layout: Arc<Mutex<GpioPinLayout>> = Arc::new(Mutex::new(layout));
 
-    let watering_configs = get_watering_configs();
-    println!("{:?}", watering_configs);
+            let button_streams = shared_layout.lock().unwrap().get_button_streams();
+            rt.spawn(button_streams);
 
-    let mut scheduler: WateringScheduler<GpioPinLayout, GpioToggleValve> =
-        WateringScheduler::new(watering_configs, Arc::clone(&shared_layout));
-    if scheduler.enabled {
-        scheduler
-            .start(&mut rt)
-            .expect("Error starting watering schedules");
-    }
 
-    // wait until program is terminated
-    wait_for_termination(&mut rt);
+            let mut scheduler: WateringScheduler<GpioPinLayout, GpioToggleValve> =
+                WateringScheduler::new(get_watering_configs(), Arc::clone(&shared_layout));
+            if scheduler.enabled {
+                scheduler
+                    .start(&mut rt)
+                    .expect("Error starting watering schedules");
+            }
+            wait_for_termination(&mut rt);
+        }
+
+    #[cfg(not(feature = "gpio"))]
+        {
+            println!("Starting garden butler in fake mode.");
+            let layout = FakePinLayout::from_config(&layout_config);
+            let shared_layout: Arc<Mutex<FakePinLayout>> = Arc::new(Mutex::new(layout));
+
+            let mut scheduler: WateringScheduler<FakePinLayout, FakeToggleValve> =
+                WateringScheduler::new(get_watering_configs(), Arc::clone(&shared_layout));
+            if scheduler.enabled {
+                scheduler
+                    .start(&mut rt)
+                    .expect("Error starting watering schedules");
+            }
+            wait_for_termination(&mut rt);
+        }
 }
 
 fn get_layout_config() -> LayoutConfig {
@@ -83,6 +106,7 @@ fn get_watering_configs() -> WateringScheduleConfigs {
     let watering_configs = settings
         .try_into::<WateringScheduleConfigs>()
         .expect("Watering schedules config contains errors");
+    println!("{:?}", watering_configs);
     watering_configs
 }
 

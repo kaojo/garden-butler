@@ -3,8 +3,13 @@ name = "garden-buttler"
 version = "0.1.0"
 authors = ["kaojo"]
 
+[features]
+gpio = ["sysfs_gpio"]
+
+default = ["gpio"]
+
 [dependencies]
-sysfs_gpio = { version = "0.5.4", features = ["use_tokio"] }
+sysfs_gpio = { version = "0.5.4", features = ["use_tokio"], optional = true }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = { version = "1.0", features = ["deserialize_in_place"] }
 futures = "0.1"
