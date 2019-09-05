@@ -13,14 +13,14 @@ impl WateringScheduleConfigs {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WateringScheduleConfig {
     schedule: ScheduleConfig,
-    valve: u64,
+    valve: u8,
 }
 
 impl WateringScheduleConfig {
     pub fn get_schedule(&self) -> &ScheduleConfig {
         &self.schedule
     }
-    pub fn get_valve(&self) -> u64 {
+    pub fn get_valve(&self) -> u8 {
         self.valve
     }
 }
