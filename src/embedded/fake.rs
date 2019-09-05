@@ -24,13 +24,15 @@ impl PinLayout<FakeToggleValve> for FakePinLayout {
 }
 
 impl FakePinLayout {
-    pub fn from_config(layout: &LayoutConfig) -> FakePinLayout {
-        FakePinLayout {
-            toggle_valves: layout.get_valves()
+    pub fn from_config(config: &LayoutConfig) -> Arc<Mutex<FakePinLayout>> {
+        let layout = FakePinLayout {
+            toggle_valves: config.get_valves()
                 .iter()
                 .map(|valve_conf| Arc::new(Mutex::new(FakeToggleValve::from_config(valve_conf))))
                 .collect()
-        }
+        };
+
+        Arc::new(Mutex::new(layout))
     }
 }
 

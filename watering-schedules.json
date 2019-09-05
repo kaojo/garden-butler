@@ -11,7 +11,7 @@
     {
       "valve": 27,
       "schedule": {
-        "cron_expression" : "0/2 * * * * *",
+        "cron_expression" : "0/30 * * * * *",
         "duration_seconds" : 1
       }
     }

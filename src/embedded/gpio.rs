@@ -36,29 +36,29 @@ impl Drop for GpioPinLayout {
 }
 
 impl GpioPinLayout {
-    pub fn from_config(layout: &LayoutConfig) -> GpioPinLayout {
-        let result = GpioPinLayout {
-            power_pin: layout
+    pub fn from_config(config: &LayoutConfig) -> Arc<Mutex<GpioPinLayout>> {
+        let layout = GpioPinLayout {
+            power_pin: config
                 .get_power_pin_num()
                 .map(|num| create_pin(num, Direction::Out)),
-            error_pin: layout
+            error_pin: config
                 .get_error_pin_num()
                 .map(|num| create_pin(num, Direction::Out)),
-            toggle_valves: layout
+            toggle_valves: config
                 .get_valves()
                 .iter()
                 .map(|valve_conf| Arc::new(Mutex::new(GpioToggleValve::from_config(valve_conf))))
                 .collect(),
         };
 
-        result
+        layout
             .run_start_sequence()
             .expect("StartSequence could not run.");
-        result
+        layout
             .power_on()
             .expect("Power Pin could not be turned on.");
 
-        result
+        Arc::new(Mutex::new(layout))
     }
 
     fn run_start_sequence(&self) -> Result<(), Error> {

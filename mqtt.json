@@ -1,0 +1,7 @@
+{
+  "client_id" : "raspi",
+  "broker_hostname" : "mqtt.flespi.io",
+  "port" : 1883,
+  "username" : "FlespiToken h5ON0w6jv8UOp0QL1EEUVCKjtV0sHwdMsRqiekszgcev1S5Qkzz3Z7bgS1znnC0F",
+  "password" : ""
+}
