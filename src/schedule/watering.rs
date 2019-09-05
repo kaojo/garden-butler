@@ -76,7 +76,7 @@ fn create_schedule<T, U>(
     let valve_pin_num = schedule_config.get_valve();
     println!("Creating new schedule for valve pin num {}.", valve_pin_num);
 
-    let toggle_valve = Arc::clone(layout.lock().unwrap().find_pin(valve_pin_num)?);
+    let toggle_valve = Arc::clone(layout.lock().unwrap().find_pin(ValvePinNumber(valve_pin_num))?);
 
     let (sender, receiver) = channel::<()>();
     senders.insert(ValvePinNumber(valve_pin_num), sender);

@@ -19,7 +19,8 @@ use futures::{Future, Stream};
 use tokio::runtime::{Builder, Runtime};
 use tokio_timer::clock::Clock;
 
-use embedded::{LayoutConfig, GpioPinLayout, GpioToggleValve};
+use embedded::configuration::{LayoutConfig};
+use embedded::gpio::{GpioPinLayout, GpioToggleValve};
 use schedule::{WateringScheduleConfigs, WateringScheduler};
 
 mod embedded;
