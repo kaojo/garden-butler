@@ -14,6 +14,31 @@ pub struct GpioPinLayout {
 }
 
 impl PinLayout<GpioToggleValve> for GpioPinLayout {
+    fn new(config: &LayoutConfig) -> Self {
+        let layout = GpioPinLayout {
+            power_pin: config
+                .get_power_pin_num()
+                .map(|num| create_pin(num, Direction::Out)),
+            error_pin: config
+                .get_error_pin_num()
+                .map(|num| create_pin(num, Direction::Out)),
+            toggle_valves: config
+                .get_valves()
+                .iter()
+                .map(|valve_conf| Arc::new(Mutex::new(GpioToggleValve::from_config(valve_conf))))
+                .collect(),
+        };
+
+        layout
+            .run_start_sequence()
+            .expect("StartSequence could not run.");
+        layout
+            .power_on()
+            .expect("Power Pin could not be turned on.");
+
+        layout
+    }
+
     fn find_pin(&self, valve_pin_num: ValvePinNumber) -> Result<&Arc<Mutex<GpioToggleValve>>, ()> {
         let result_option = self.toggle_valves
             .iter()
@@ -36,30 +61,6 @@ impl Drop for GpioPinLayout {
 }
 
 impl GpioPinLayout {
-    pub fn from_config(config: &LayoutConfig) -> Arc<Mutex<GpioPinLayout>> {
-        let layout = GpioPinLayout {
-            power_pin: config
-                .get_power_pin_num()
-                .map(|num| create_pin(num, Direction::Out)),
-            error_pin: config
-                .get_error_pin_num()
-                .map(|num| create_pin(num, Direction::Out)),
-            toggle_valves: config
-                .get_valves()
-                .iter()
-                .map(|valve_conf| Arc::new(Mutex::new(GpioToggleValve::from_config(valve_conf))))
-                .collect(),
-        };
-
-        layout
-            .run_start_sequence()
-            .expect("StartSequence could not run.");
-        layout
-            .power_on()
-            .expect("Power Pin could not be turned on.");
-
-        Arc::new(Mutex::new(layout))
-    }
 
     fn run_start_sequence(&self) -> Result<(), Error> {
         for millis in [200, 200, 400, 200, 200].iter() {

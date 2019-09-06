@@ -9,6 +9,15 @@ pub struct FakePinLayout {
 }
 
 impl PinLayout<FakeToggleValve> for FakePinLayout {
+    fn new(config: &LayoutConfig) -> Self {
+        FakePinLayout {
+            toggle_valves: config.get_valves()
+                .iter()
+                .map(|valve_conf| Arc::new(Mutex::new(FakeToggleValve::from_config(valve_conf))))
+                .collect()
+        }
+    }
+
     fn find_pin(&self, valve_pin_num: ValvePinNumber) -> Result<&Arc<Mutex<FakeToggleValve>>, ()> {
         let result_option = self.toggle_valves
             .iter()
@@ -20,19 +29,6 @@ impl PinLayout<FakeToggleValve> for FakePinLayout {
                 None => Err(()),
                 Some(valve) => Ok(valve),
             }
-    }
-}
-
-impl FakePinLayout {
-    pub fn from_config(config: &LayoutConfig) -> Arc<Mutex<FakePinLayout>> {
-        let layout = FakePinLayout {
-            toggle_valves: config.get_valves()
-                .iter()
-                .map(|valve_conf| Arc::new(Mutex::new(FakeToggleValve::from_config(valve_conf))))
-                .collect()
-        };
-
-        Arc::new(Mutex::new(layout))
     }
 }
 

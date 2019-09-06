@@ -2,6 +2,7 @@
 use core::convert;
 use core::fmt;
 use std::sync::{Arc, Mutex};
+use embedded::configuration::LayoutConfig;
 
 pub mod configuration;
 #[cfg(feature = "gpio")]
@@ -13,6 +14,7 @@ pub mod fake;
 pub struct ValvePinNumber(pub u8);
 
 pub trait PinLayout<T> {
+    fn new(config: &LayoutConfig) -> Self;
     fn find_pin(&self, valve_pin_num: ValvePinNumber) -> Result<&Arc<Mutex<T>>, ()>;
 }
 
