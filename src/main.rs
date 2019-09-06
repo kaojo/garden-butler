@@ -29,7 +29,7 @@ use embedded::configuration::LayoutConfig;
 #[cfg(not(feature = "gpio"))]
 use embedded::fake::{FakePinLayout, FakeToggleValve};
 #[cfg(feature = "gpio")]
-use embedded::gpio::GpioPinLayout;
+use embedded::gpio::{GpioPinLayout, GpioToggleValve};
 use mqtt::configuration::MqttConfig;
 use mqtt::MqttSession;
 use schedule::{WateringScheduleConfigs, WateringScheduler};
@@ -43,8 +43,16 @@ fn main() {
 
     let mut rt = Builder::new().clock(Clock::system()).build().unwrap();
 
-    let layout_config = get_layout_config();
+    let layout_config = LayoutConfig::default();
     println!("{:?}", layout_config);
+
+    let mqtt_config = MqttConfig::default();
+    let mut mqtt_session: Arc<Mutex<MqttSession>> = MqttSession::from_config(mqtt_config.clone());
+    // TODO replace global subscription with only relevant topics for reception of commands
+    mqtt_session.lock().unwrap().client.subscribe(format!("{}/garden-butler/#", &mqtt_config.client_id), QoS::AtLeastOnce).unwrap();
+    rt.spawn(
+        mqtt_message_logger(Arc::clone(&mqtt_session))
+    );
 
     #[cfg(feature = "gpio")]
         {
@@ -66,30 +74,21 @@ fn main() {
 
             let scheduler = create_and_start_schedules(&mut rt, &layout);
 
-            let mqtt_config = get_mqtt_config();
-            let mut mqtt_session: Arc<Mutex<MqttSession>> = MqttSession::from_config(mqtt_config);
-
-            mqtt_session.lock().unwrap().client.subscribe("raspi/#", QoS::AtLeastOnce).unwrap();
-
-            rt.spawn(
-                notification_logger(mqtt_session)
-            );
-
             wait_for_termination(&mut rt);
         }
 }
 
-fn notification_logger(mqtt_session: Arc<Mutex<MqttSession>>) -> impl Future<Item=(), Error=()> + Send {
+fn mqtt_message_logger(mqtt_session: Arc<Mutex<MqttSession>>) -> impl Future<Item=(), Error=()> + Send {
     let clone = Arc::clone(&mqtt_session);
     tokio_timer::Interval::new_interval(Duration::from_secs(1))
         .for_each(move |_| {
-            let result = clone.lock().unwrap().receiver.try_recv();
+            let result = mqtt_session.lock().unwrap().receiver.try_recv();
             match result {
                 Ok(n) => {
                     println!("{:?}", n);
                     Ok(())
                 }
-                Err(_) => {Ok(())}
+                Err(_) => { Ok(()) }
             }
         })
         .map_err(|_| ())
@@ -99,66 +98,13 @@ fn create_and_start_schedules<T, U>(mut rt: &mut Runtime, shared_layout: &Arc<Mu
     where T: PinLayout<U> + 'static, U: ToggleValve + Send + 'static
 {
     let mut scheduler =
-        WateringScheduler::new(get_watering_configs(), Arc::clone(&shared_layout));
+        WateringScheduler::new(WateringScheduleConfigs::default(), Arc::clone(&shared_layout));
     if scheduler.enabled {
         scheduler
             .start(&mut rt)
             .expect("Error starting watering schedules");
     }
     scheduler
-}
-
-fn get_layout_config() -> LayoutConfig {
-    let mut settings = config::Config::default();
-    settings
-        .merge(config::File::new("layout", config::FileFormat::Json))
-        .unwrap()
-        // Add in settings from the environment (with a prefix of LAYOUT)
-        // Eg.. `LAYOUT_POWER=11 ./target/app` would set the `debug` key
-        .merge(config::Environment::with_prefix("LAYOUT"))
-        .unwrap();
-    let layout_config = settings
-        .try_into::<LayoutConfig>()
-        .expect("Layout config contains errors");
-    layout_config
-}
-
-fn get_watering_configs() -> WateringScheduleConfigs {
-    let mut settings = config::Config::default();
-    settings
-        .merge(config::File::new(
-            "watering-schedules",
-            config::FileFormat::Json,
-        ))
-        .unwrap()
-        // Add in settings from the environment (with a prefix of LAYOUT)
-        // Eg.. `LAYOUT_POWER=11 ./target/app` would set the `debug` key
-        .merge(config::Environment::with_prefix("WATERING"))
-        .unwrap();
-    let watering_configs = settings
-        .try_into::<WateringScheduleConfigs>()
-        .expect("Watering schedules config contains errors");
-    println!("{:?}", watering_configs);
-    watering_configs
-}
-
-fn get_mqtt_config() -> MqttConfig {
-    let mut settings = config::Config::default();
-    settings
-        .merge(config::File::new(
-            "mqtt",
-            config::FileFormat::Json,
-        ))
-        .unwrap()
-        // Add in settings from the environment (with a prefix of LAYOUT)
-        // Eg.. `LAYOUT_POWER=11 ./target/app` would set the `debug` key
-        .merge(config::Environment::with_prefix("MQTT"))
-        .unwrap();
-    let config = settings
-        .try_into::<MqttConfig>()
-        .expect("Mqtt config contains errors");
-    println!("{:?}", config);
-    config
 }
 
 fn wait_for_termination(rt: &mut Runtime) {

@@ -5,6 +5,23 @@ pub struct LayoutConfig {
     valves: Vec<ValveConfig>,
 }
 
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        let mut settings = config::Config::default();
+        settings
+            .merge(config::File::new("layout", config::FileFormat::Json))
+            .unwrap()
+            // Add in settings from the environment (with a prefix of LAYOUT)
+            // Eg.. `LAYOUT_POWER=11 ./target/app` would set the `debug` key
+            .merge(config::Environment::with_prefix("LAYOUT"))
+            .unwrap();
+        let layout_config = settings
+            .try_into::<LayoutConfig>()
+            .expect("Layout config contains errors");
+        layout_config
+    }
+}
+
 impl LayoutConfig {
     pub fn get_power_pin_num(&self) -> Option<u8> {
         self.power

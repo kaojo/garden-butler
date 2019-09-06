@@ -10,6 +10,25 @@ impl WateringScheduleConfigs {
     }
 }
 
+impl Default for WateringScheduleConfigs {
+    fn default() -> Self {
+        let mut settings = config::Config::default();
+        settings
+            .merge(config::File::new(
+                "watering-schedules",
+                config::FileFormat::Json,
+            ))
+            .unwrap()
+            .merge(config::Environment::with_prefix("WATERING"))
+            .unwrap();
+        let watering_configs = settings
+            .try_into::<WateringScheduleConfigs>()
+            .expect("Watering schedules config contains errors");
+        println!("{:?}", watering_configs);
+        watering_configs
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WateringScheduleConfig {
     schedule: ScheduleConfig,
