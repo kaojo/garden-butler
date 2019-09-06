@@ -1,7 +1,8 @@
 {
   "client_id" : "raspi",
   "broker_hostname" : "mqtt.flespi.io",
-  "port" : 1883,
+  "port" : 8883,
   "username" : "FlespiToken h5ON0w6jv8UOp0QL1EEUVCKjtV0sHwdMsRqiekszgcev1S5Qkzz3Z7bgS1znnC0F",
-  "password" : ""
+  "password" : "",
+  "cert_path": "/app/root-ca.crt"
 }
