@@ -7,6 +7,7 @@ use rumqtt::{ConnectionMethod, MqttClient, MqttOptions, Notification, Receiver, 
 use mqtt::configuration::MqttConfig;
 
 pub mod configuration;
+pub mod command;
 
 pub struct MqttSession {
     pub client: MqttClient,
