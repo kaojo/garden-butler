@@ -18,6 +18,7 @@ impl Default for LayoutConfig {
         let layout_config = settings
             .try_into::<LayoutConfig>()
             .expect("Layout config contains errors");
+        println!("{:?}", layout_config);
         layout_config
     }
 }

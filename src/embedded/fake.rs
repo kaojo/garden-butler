@@ -8,6 +8,12 @@ pub struct FakePinLayout {
     toggle_valves: Vec<Arc<Mutex<FakeToggleValve>>>,
 }
 
+impl Drop for FakePinLayout {
+    fn drop(&mut self) {
+        println!("Drop Pinlayout.")
+    }
+}
+
 impl PinLayout<FakeToggleValve> for FakePinLayout {
     fn new(config: &LayoutConfig) -> Self {
         FakePinLayout {

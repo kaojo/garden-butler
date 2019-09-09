@@ -111,7 +111,7 @@ impl GpioPinLayout {
                                 let mut clone_raw = clone.lock().unwrap();
                                 clone_raw.toggle()
                             })
-                            .map_err(|err| println!("error = {:?}", err)),
+                            .map_err(|err| println!("button stream error = {:?}", err)),
                     );
                 }
             }

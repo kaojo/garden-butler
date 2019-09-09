@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::num::ParseIntError;
 use std::ops::Deref;
 use std::str::{FromStr, Utf8Error};
