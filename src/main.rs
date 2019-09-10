@@ -3,6 +3,7 @@ extern crate config;
 extern crate core;
 extern crate cron;
 extern crate crossbeam;
+#[macro_use]
 extern crate futures;
 extern crate rumqtt;
 extern crate serde;
@@ -23,6 +24,7 @@ use futures::future::lazy;
 use rumqtt::QoS;
 use serde::export::PhantomData;
 
+use communication::ReceiverFuture;
 use embedded::{PinLayout, ToggleValve};
 use embedded::configuration::LayoutConfig;
 #[cfg(not(feature = "gpio"))]
@@ -33,7 +35,6 @@ use mqtt::command::command_listener;
 use mqtt::configuration::MqttConfig;
 use mqtt::MqttSession;
 use schedule::{WateringScheduleConfigs, WateringScheduler};
-use communication::ReceiverFuture;
 
 mod embedded;
 mod schedule;
@@ -49,7 +50,7 @@ fn main() {
     println!("Garden buttler starting ...");
 
     tokio::run(lazy(|| {
-        let (s, r) = crossbeam::unbounded();
+        let mut ctrl_c_senders = Vec::new();
 
         let layout = create_pin_layout(LayoutConfig::default(), LAYOUT_TYPE);
         let mqtt_session: Arc<Mutex<MqttSession>> = MqttSession::from_config(MqttConfig::default());
@@ -58,9 +59,11 @@ fn main() {
 
         #[cfg(feature = "gpio")]
             {
+                let (s, r) = crossbeam::unbounded();
+                ctrl_c_senders.push((s.clone(), r.clone()));
                 let button_streams = layout.lock().unwrap().get_button_streams();
                 tokio::spawn(button_streams
-                    .select2(ReceiverFuture { receiver: r.clone() })
+                    .select2(ReceiverFuture::new(r.clone()))
                     .map(|_| ())
                     .map_err(|_| ())
                 );
@@ -69,29 +72,47 @@ fn main() {
         let mqtt_config = MqttConfig::default();
         // TODO replace global subscription with only relevant topics for reception of commands
         mqtt_session.lock().unwrap().client.subscribe(format!("{}/garden-butler/#", &mqtt_config.client_id), QoS::AtLeastOnce).unwrap();
-        tokio::spawn(
+        tokio::spawn({
+            let (s, r) = crossbeam::unbounded();
+            ctrl_c_senders.push((s.clone(), r.clone()));
             command_listener(&mqtt_session, &layout)
-                .select2(ReceiverFuture { receiver: r.clone() })
+                .select2(ReceiverFuture::new(r.clone()))
                 .map(|_| ())
                 .map_err(|_| ())
+        }
         );
 
         if scheduler.enabled {
             scheduler
-                .start(r.clone())
-                .expect("Error starting watering schedules");
+                .start().into_iter()
+                .filter(|res| res.is_ok())
+                .map(|res| res.unwrap())
+                .for_each(|schedule_future| {
+                    let (s, r) = crossbeam::unbounded();
+                    ctrl_c_senders.push((s.clone(), r.clone()));
+
+                    tokio::spawn(
+                        schedule_future
+                            .select2(ReceiverFuture::new(r.clone()))
+                            .map(|_| ())
+                            .map_err(|_| ())
+                    );
+                });
         }
 
         println!("Garden buttler started ...");
         let ctrl_c = tokio_signal::ctrl_c()
             .flatten_stream().take(1).map_err(|e| println!("ctrlc-error = {:?}", e));
-        let sender = s.clone();
         let prog = ctrl_c.for_each(move |_| {
-            println!("ctrl-c received!");
-            sender.send("ctrl-c received!".to_string())
-                .map_err(|e| println!("send error = {:?}", e))
-        })
-            .map(|_| ()); // Drop tx handle
+            println!("ctrl-c received! Sending message to {} futures.", ctrl_c_senders.len());
+            ctrl_c_senders.iter().for_each(|sender| {
+                println!("ctrl-c received!");
+                sender.0.send("ctrl-c received!".to_string())
+                    .map_err(|e| println!("send error = {}", e.0))
+                    .unwrap_or_default();
+            });
+            Ok(())
+        });
         prog
     }));
     println!("Exiting garden buttler ...");

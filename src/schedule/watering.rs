@@ -8,7 +8,6 @@ use std::time::Duration;
 use chrono::Local;
 use cron::Schedule;
 use futures::{Future, Stream};
-use rumqtt::Receiver;
 use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
@@ -54,17 +53,17 @@ impl<T, U> WateringScheduler<T, U> where T: PinLayout<U> + 'static, U: ToggleVal
         }
     }
 
-    pub fn start(&mut self, receiver: Receiver<String>) -> Result<(), ()> {
+    pub fn start(&mut self) -> Vec<Result<impl Future<Item=(), Error=()> + Send, ()>> {
+        let mut schedules = Vec::new();
         for config in self.configs.get_schedules().iter() {
             println!("Creating watering schedule for valve {}", config.get_valve());
-            tokio::spawn(create_schedule(
+            schedules.push(create_schedule(
                 &mut self.senders,
                 Arc::clone(&self.layout),
                 config,
-                receiver.clone(),
-            )?);
+            ));
         }
-        Ok(())
+        schedules
     }
 }
 
@@ -72,7 +71,6 @@ fn create_schedule<T, U>(
     senders: &mut HashMap<ValvePinNumber, crossbeam::Sender<()>>,
     layout: Arc<Mutex<T>>,
     schedule_config: &WateringScheduleConfig,
-    ctrl_c_receiver: Receiver<String>,
 ) -> Result<impl Future<Item=(), Error=()> + Send, ()>
     where T: PinLayout<U> + 'static, U: ToggleValve + Send + 'static
 {
@@ -113,7 +111,7 @@ fn create_schedule<T, U>(
             tokio::spawn(turn_off);
             Ok(())
         })
-        .select2(ReceiverFuture{receiver: ctrl_c_receiver}) // TODO test shutoff
+        .select2(ReceiverFuture::new(receiver)) // TODO test shutoff
         .map(|_| ())
         .map_err(|_| ());
     Ok(task)
