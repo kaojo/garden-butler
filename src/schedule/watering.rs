@@ -12,9 +12,9 @@ use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
+use communication::ReceiverFuture;
 use embedded::{PinLayout, ToggleValve, ValvePinNumber};
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
-use communication::ReceiverFuture;
 
 pub struct WateringScheduler<T, U> where T: PinLayout<U> + 'static, U: ToggleValve + Send + 'static {
     configs: WateringScheduleConfigs,
@@ -53,15 +53,17 @@ impl<T, U> WateringScheduler<T, U> where T: PinLayout<U> + 'static, U: ToggleVal
         }
     }
 
-    pub fn start(&mut self) -> Vec<Result<impl Future<Item=(), Error=()> + Send, ()>> {
+    pub fn start(&mut self) -> Vec<impl Future<Item=(), Error=()> + Send> {
         let mut schedules = Vec::new();
         for config in self.configs.get_schedules().iter() {
             println!("Creating watering schedule for valve {}", config.get_valve());
-            schedules.push(create_schedule(
+            if let Ok(result) = create_schedule(
                 &mut self.senders,
                 Arc::clone(&self.layout),
                 config,
-            ));
+            ) {
+                schedules.push(result);
+            }
         }
         schedules
     }

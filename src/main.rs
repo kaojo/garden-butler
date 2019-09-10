@@ -85,8 +85,6 @@ fn main() {
         if scheduler.enabled {
             scheduler
                 .start().into_iter()
-                .filter(|res| res.is_ok())
-                .map(|res| res.unwrap())
                 .for_each(|schedule_future| {
                     let (s, r) = crossbeam::unbounded();
                     ctrl_c_senders.push((s.clone(), r.clone()));
