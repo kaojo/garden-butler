@@ -73,14 +73,16 @@ fn main() {
 
         #[cfg(feature = "gpio")]
             {
-                let (s, r) = crossbeam::unbounded();
-                ctrl_c_senders.push((s.clone(), r.clone()));
-                let button_streams = layout.lock().unwrap().get_button_streams();
                 tokio::spawn(
-                    button_streams
-                        .select2(CancelReceiverFuture::new(r.clone()))
-                        .map(|_| ())
-                        .map_err(|_| ())
+                    {
+                        let (s, r) = crossbeam::unbounded();
+                        ctrl_c_senders.push((s.clone(), r.clone()));
+                        let button_streams = layout.lock().unwrap().get_button_streams();
+                        button_streams
+                            .select2(CancelReceiverFuture::new(r.clone()))
+                            .map(|_| ())
+                            .map_err(|_| ())
+                    }
                 );
             }
 
