@@ -2,10 +2,10 @@ use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::Duration;
 
-use futures::{Future, lazy, Stream};
-use sysfs_gpio::{Direction, Edge, Pin};
-use embedded::{PinLayout, ToggleValve, ValvePinNumber, Error};
 use embedded::configuration::{LayoutConfig, ValveConfig};
+use embedded::{Error, PinLayout, ToggleValve, ValvePinNumber};
+use futures::{lazy, Future, Stream};
+use sysfs_gpio::{Direction, Edge, Pin};
 
 pub struct GpioPinLayout {
     power_pin: Option<Pin>,
@@ -40,28 +40,26 @@ impl PinLayout<GpioToggleValve> for GpioPinLayout {
     }
 
     fn find_pin(&self, valve_pin_num: ValvePinNumber) -> Result<&Arc<Mutex<GpioToggleValve>>, ()> {
-        let result_option = self.toggle_valves
+        let result_option = self
+            .toggle_valves
             .iter()
-            .find(|ref valve_pin|
-                valve_pin_num == *valve_pin.lock().unwrap().get_valve_pin_num()
-            );
-        match result_option
-            {
-                None => Err(()),
-                Some(valve) => Ok(valve),
-            }
+            .find(|ref valve_pin| valve_pin_num == *valve_pin.lock().unwrap().get_valve_pin_num());
+        match result_option {
+            None => Err(()),
+            Some(valve) => Ok(valve),
+        }
     }
 }
 
 impl Drop for GpioPinLayout {
     fn drop(&mut self) {
         println!("Drop Pinlayout");
-        self.unexport_all().expect("Unexport should always work but didn't for some reason.");
+        self.unexport_all()
+            .expect("Unexport should always work but didn't for some reason.");
     }
 }
 
 impl GpioPinLayout {
-
     fn run_start_sequence(&self) -> Result<(), Error> {
         for millis in [200, 200, 400, 200, 200].iter() {
             let running_led = self.power_pin;
@@ -91,7 +89,7 @@ impl GpioPinLayout {
         Ok(())
     }
 
-    pub fn get_button_streams(&self) -> impl Future<Item=(), Error=()> {
+    pub fn get_button_streams(&self) -> impl Future<Item = (), Error = ()> {
         let valve_pins = self.get_valve_pins();
         let mut valves: Vec<Arc<Mutex<GpioToggleValve>>> = Vec::new();
         for pin in valve_pins {

@@ -1,14 +1,15 @@
 #[cfg(feature = "gpio")]
 use core::convert;
 use core::fmt;
-use std::sync::{Arc, Mutex};
 use embedded::configuration::LayoutConfig;
+use std::sync::{Arc, Mutex};
 
+pub mod command;
 pub mod configuration;
-#[cfg(feature = "gpio")]
-pub mod gpio;
 #[cfg(not(feature = "gpio"))]
 pub mod fake;
+#[cfg(feature = "gpio")]
+pub mod gpio;
 
 #[derive(PartialEq, Eq, Hash)]
 pub struct ValvePinNumber(pub u8);
@@ -46,52 +47,52 @@ pub enum Error {
 impl ::std::error::Error for Error {
     fn description(&self) -> &str {
         #[cfg(feature = "gpio")]
-            {
-                match *self {
-                    Error::GPIO(ref e) => e.description(),
-                    Error::Unexpected(_) => "An Unexpected Error Occurred",
-                }
+        {
+            match *self {
+                Error::GPIO(ref e) => e.description(),
+                Error::Unexpected(_) => "An Unexpected Error Occurred",
             }
+        }
         #[cfg(not(feature = "gpio"))]
-            {
-                match *self {
-                    Error::Unexpected(_) => "An Unexpected Error Occurred",
-                }
+        {
+            match *self {
+                Error::Unexpected(_) => "An Unexpected Error Occurred",
             }
+        }
     }
 
     fn cause(&self) -> Option<&::std::error::Error> {
         #[cfg(feature = "gpio")]
-            {
-                match *self {
-                    Error::GPIO(ref e) => Some(e),
-                    _ => None,
-                }
+        {
+            match *self {
+                Error::GPIO(ref e) => Some(e),
+                _ => None,
             }
+        }
         #[cfg(not(feature = "gpio"))]
-            {
-                match *self {
-                    _ => None,
-                }
+        {
+            match *self {
+                _ => None,
             }
+        }
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         #[cfg(feature = "gpio")]
-            {
-                match *self {
-                    Error::GPIO(ref e) => e.fmt(f),
-                    Error::Unexpected(ref s) => write!(f, "Unexpected: {}", s),
-                }
+        {
+            match *self {
+                Error::GPIO(ref e) => e.fmt(f),
+                Error::Unexpected(ref s) => write!(f, "Unexpected: {}", s),
             }
+        }
         #[cfg(not(feature = "gpio"))]
-            {
-                match *self {
-                    Error::Unexpected(ref s) => write!(f, "Unexpected: {}", s),
-                }
+        {
+            match *self {
+                Error::Unexpected(ref s) => write!(f, "Unexpected: {}", s),
             }
+        }
     }
 }
 

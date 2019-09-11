@@ -1,33 +1,38 @@
-use futures::{Future, Stream, future};
-use tokio::prelude::Async;
+use futures::{future, Future, Stream};
 use std::time::Duration;
+use tokio::prelude::Async;
 
-pub struct ReceiverFuture {
+pub struct CancelReceiverFuture {
     pub inner: Box<Future<Item = (), Error = ()> + Send>,
 }
 
-impl ReceiverFuture {
-    pub fn new<T>(receiver: crossbeam::Receiver<T>) -> ReceiverFuture where T: Sized + Send + 'static {
+impl CancelReceiverFuture {
+    pub fn new<T>(receiver: crossbeam::Receiver<T>) -> CancelReceiverFuture
+    where
+        T: Sized + Send + 'static,
+    {
         let inner = tokio_timer::Interval::new_interval(Duration::from_secs(1))
-            .map(move |_| {
-                match receiver.try_recv() {
-                    Ok(m) => { return Some(m); }
-                    Err(_) => { return None; }
+            .map(move |_| match receiver.try_recv() {
+                Ok(m) => {
+                    return Some(m);
+                }
+                Err(_) => {
+                    return None;
                 }
             })
-            .take_while(|m| {
-                match m {
-                    None => {future::ok(true)},
-                    Some(_) => {future::ok(false)},
-                }
+            .take_while(|m| match m {
+                None => future::ok(true),
+                Some(_) => future::ok(false),
             })
             .for_each(|_| Ok(()))
             .map_err(|_| ());
-        ReceiverFuture {inner : Box::new(inner)}
+        CancelReceiverFuture {
+            inner: Box::new(inner),
+        }
     }
 }
 
-impl Future for ReceiverFuture {
+impl Future for CancelReceiverFuture {
     type Item = ();
     type Error = ();
 

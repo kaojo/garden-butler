@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
-use embedded::{Error, PinLayout, ToggleValve, ValvePinNumber, ValveStatus};
 use embedded::configuration::{LayoutConfig, ValveConfig};
 use embedded::ValveStatus::{CLOSED, OPEN};
+use embedded::{Error, PinLayout, ToggleValve, ValvePinNumber, ValveStatus};
 
 pub struct FakePinLayout {
     toggle_valves: Vec<Arc<Mutex<FakeToggleValve>>>,
@@ -17,24 +17,23 @@ impl Drop for FakePinLayout {
 impl PinLayout<FakeToggleValve> for FakePinLayout {
     fn new(config: &LayoutConfig) -> Self {
         FakePinLayout {
-            toggle_valves: config.get_valves()
+            toggle_valves: config
+                .get_valves()
                 .iter()
                 .map(|valve_conf| Arc::new(Mutex::new(FakeToggleValve::from_config(valve_conf))))
-                .collect()
+                .collect(),
         }
     }
 
     fn find_pin(&self, valve_pin_num: ValvePinNumber) -> Result<&Arc<Mutex<FakeToggleValve>>, ()> {
-        let result_option = self.toggle_valves
+        let result_option = self
+            .toggle_valves
             .iter()
-            .find(|ref valve_pin|
-                valve_pin_num == *valve_pin.lock().unwrap().get_valve_pin_num()
-            );
-        match result_option
-            {
-                None => Err(()),
-                Some(valve) => Ok(valve),
-            }
+            .find(|ref valve_pin| valve_pin_num == *valve_pin.lock().unwrap().get_valve_pin_num());
+        match result_option {
+            None => Err(()),
+            Some(valve) => Ok(valve),
+        }
     }
 }
 

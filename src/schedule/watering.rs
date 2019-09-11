@@ -12,11 +12,15 @@ use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
-use communication::ReceiverFuture;
+use communication::CancelReceiverFuture;
 use embedded::{PinLayout, ToggleValve, ValvePinNumber};
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
 
-pub struct WateringScheduler<T, U> where T: PinLayout<U> + 'static, U: ToggleValve + Send + 'static {
+pub struct WateringScheduler<T, U>
+where
+    T: PinLayout<U> + 'static,
+    U: ToggleValve + Send + 'static,
+{
     configs: WateringScheduleConfigs,
     senders: HashMap<ValvePinNumber, crossbeam::Sender<()>>,
     layout: Arc<Mutex<T>>,
@@ -24,11 +28,12 @@ pub struct WateringScheduler<T, U> where T: PinLayout<U> + 'static, U: ToggleVal
     pub enabled: bool,
 }
 
-impl<T, U> WateringScheduler<T, U> where T: PinLayout<U> + 'static, U: ToggleValve + Send + 'static {
-    pub fn new(
-        configs: WateringScheduleConfigs,
-        layout: Arc<Mutex<T>>,
-    ) -> WateringScheduler<T, U> {
+impl<T, U> WateringScheduler<T, U>
+where
+    T: PinLayout<U> + 'static,
+    U: ToggleValve + Send + 'static,
+{
+    pub fn new(configs: WateringScheduleConfigs, layout: Arc<Mutex<T>>) -> WateringScheduler<T, U> {
         let senders = HashMap::new();
         let enabled = configs.enabled.unwrap_or(true);
         let toggle_valve_type = PhantomData;
@@ -53,15 +58,15 @@ impl<T, U> WateringScheduler<T, U> where T: PinLayout<U> + 'static, U: ToggleVal
         }
     }
 
-    pub fn start(&mut self) -> Vec<impl Future<Item=(), Error=()> + Send> {
+    pub fn start(&mut self) -> Vec<impl Future<Item = (), Error = ()> + Send> {
         let mut schedules = Vec::new();
         for config in self.configs.get_schedules().iter() {
-            println!("Creating watering schedule for valve {}", config.get_valve());
-            if let Ok(result) = create_schedule(
-                &mut self.senders,
-                Arc::clone(&self.layout),
-                config,
-            ) {
+            println!(
+                "Creating watering schedule for valve {}",
+                config.get_valve()
+            );
+            if let Ok(result) = create_schedule(&mut self.senders, Arc::clone(&self.layout), config)
+            {
                 schedules.push(result);
             }
         }
@@ -73,20 +78,28 @@ fn create_schedule<T, U>(
     senders: &mut HashMap<ValvePinNumber, crossbeam::Sender<()>>,
     layout: Arc<Mutex<T>>,
     schedule_config: &WateringScheduleConfig,
-) -> Result<impl Future<Item=(), Error=()> + Send, ()>
-    where T: PinLayout<U> + 'static, U: ToggleValve + Send + 'static
+) -> Result<impl Future<Item = (), Error = ()> + Send, ()>
+where
+    T: PinLayout<U> + 'static,
+    U: ToggleValve + Send + 'static,
 {
     let valve_pin_num = schedule_config.get_valve();
 
-    let toggle_valve = Arc::clone(layout.lock().unwrap().find_pin(ValvePinNumber(valve_pin_num))?);
-    println!("Creating new schedule for valve pin num {}.", toggle_valve.lock().unwrap().get_valve_pin_num().0);
+    let toggle_valve = Arc::clone(
+        layout
+            .lock()
+            .unwrap()
+            .find_pin(ValvePinNumber(valve_pin_num))?,
+    );
+    println!(
+        "Creating new schedule for valve pin num {}.",
+        toggle_valve.lock().unwrap().get_valve_pin_num().0
+    );
 
     let (sender, receiver) = crossbeam::unbounded();
     senders.insert(ValvePinNumber(valve_pin_num), sender);
 
-    let watering_duration = *schedule_config
-        .get_schedule()
-        .get_duration_seconds();
+    let watering_duration = *schedule_config.get_schedule().get_duration_seconds();
     let cron_expression = schedule_config.get_schedule().get_cron_expression();
     let cron = Schedule::from_str(cron_expression).map_err(|err| println!("{:?}", err))?;
     let task = CronInterval::new(cron)
@@ -107,13 +120,17 @@ fn create_schedule<T, U>(
                         Local::now().format("%Y-%m-%d][%H:%M:%S"),
                         valve_pin_num
                     );
-                    clone.lock().unwrap().turn_off().map_err(|e| println!("turn off error = {:?}", e))?;
+                    clone
+                        .lock()
+                        .unwrap()
+                        .turn_off()
+                        .map_err(|e| println!("turn off error = {:?}", e))?;
                     Ok(())
                 });
             tokio::spawn(turn_off);
             Ok(())
         })
-        .select2(ReceiverFuture::new(receiver)) // TODO test shutoff
+        .select2(CancelReceiverFuture::new(receiver)) // TODO test shutoff
         .map(|_| ())
         .map_err(|_| ());
     Ok(task)

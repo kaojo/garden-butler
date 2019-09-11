@@ -1,4 +1,3 @@
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MqttConfig {
     pub client_id: String,
@@ -13,10 +12,7 @@ impl Default for MqttConfig {
     fn default() -> Self {
         let mut settings = config::Config::default();
         settings
-            .merge(config::File::new(
-                "mqtt",
-                config::FileFormat::Json,
-            ))
+            .merge(config::File::new("mqtt", config::FileFormat::Json))
             .unwrap()
             .merge(config::Environment::with_prefix("MQTT"))
             .unwrap();
