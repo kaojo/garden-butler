@@ -2,7 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use embedded::configuration::{LayoutConfig, ValveConfig};
 use embedded::ValveStatus::{CLOSED, OPEN};
-use embedded::{Error, PinLayout, ToggleValve, ValvePinNumber, ValveStatus};
+use embedded::{Error, PinLayout, ToggleValve, ValvePinNumber, ValveStatus, LayoutStatus, ToggleValveStatus};
+use embedded::command::LayoutCommand::Open;
 
 pub struct FakePinLayout {
     toggle_valves: Vec<Arc<Mutex<FakeToggleValve>>>,
@@ -33,6 +34,23 @@ impl PinLayout<FakeToggleValve> for FakePinLayout {
         match result_option {
             None => Err(()),
             Some(valve) => Ok(valve),
+        }
+    }
+
+    fn get_layout_status(&self) -> LayoutStatus {
+        LayoutStatus{
+            valves: self.toggle_valves.iter().map(|tv| {
+                let valve = tv.lock().unwrap();
+                let valve_pin_number = ValvePinNumber(valve.valve_pin_number.0);
+                let status = match valve.status {
+                    OPEN => {OPEN},
+                    CLOSED => {CLOSED},
+                };
+                ToggleValveStatus {
+                    valve_pin_number,
+                    status
+                }
+            }).collect()
         }
     }
 }
@@ -72,6 +90,7 @@ impl ToggleValve for FakeToggleValve {
     fn get_valve_pin_num(&self) -> &ValvePinNumber {
         &self.valve_pin_number
     }
+
 }
 
 impl FakeToggleValve {

@@ -6,6 +6,7 @@ pub struct MqttConfig {
     pub username: Option<String>,
     pub password: Option<String>,
     pub cert_path: Option<String>,
+    pub status_publish_interval_secs: Option<u64>,
 }
 
 impl Default for MqttConfig {

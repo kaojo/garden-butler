@@ -16,6 +16,7 @@ extern crate tokio_channel;
 extern crate tokio_chrono;
 extern crate tokio_signal;
 extern crate tokio_timer;
+extern crate serde_json;
 
 use std::sync::{Arc, Mutex};
 
@@ -37,6 +38,7 @@ use mqtt::command::command_listener;
 use mqtt::configuration::MqttConfig;
 use mqtt::MqttSession;
 use schedule::{WateringScheduleConfigs, WateringScheduler};
+use mqtt::publish::PinLayoutStatus;
 
 mod communication;
 mod embedded;
@@ -97,6 +99,16 @@ fn main() {
             let (s, r) = crossbeam::unbounded();
             ctrl_c_senders.push((s.clone(), r.clone()));
             command_listener(&mqtt_session, command_sender_clone)
+                .select2(CancelReceiverFuture::new(r.clone()))
+                .map(|_| ())
+                .map_err(|_| ())
+        });
+
+        tokio::spawn({
+            let (s, r) = crossbeam::unbounded();
+            ctrl_c_senders.push((s.clone(), r.clone()));
+
+            PinLayoutStatus::new(Arc::clone(&layout), Arc::clone(&mqtt_session), mqtt_config)
                 .select2(CancelReceiverFuture::new(r.clone()))
                 .map(|_| ())
                 .map_err(|_| ())

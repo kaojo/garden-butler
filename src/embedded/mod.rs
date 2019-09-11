@@ -11,12 +11,13 @@ pub mod fake;
 #[cfg(feature = "gpio")]
 pub mod gpio;
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug)]
 pub struct ValvePinNumber(pub u8);
 
 pub trait PinLayout<T> {
     fn new(config: &LayoutConfig) -> Self;
     fn find_pin(&self, valve_pin_num: ValvePinNumber) -> Result<&Arc<Mutex<T>>, ()>;
+    fn get_layout_status(&self) -> LayoutStatus;
 }
 
 pub trait ToggleValve {
@@ -26,9 +27,21 @@ pub trait ToggleValve {
     fn get_valve_pin_num(&self) -> &ValvePinNumber;
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub enum ValveStatus {
     OPEN,
     CLOSED,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct LayoutStatus {
+    valves: Vec<ToggleValveStatus>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ToggleValveStatus {
+    valve_pin_number: ValvePinNumber,
+    status: ValveStatus,
 }
 
 #[derive(Debug)]
