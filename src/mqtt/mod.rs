@@ -13,10 +13,12 @@ pub mod status;
 pub struct MqttSession {
     pub client: MqttClient,
     pub receiver: Receiver<Notification>,
+    pub config: MqttConfig,
 }
 
 impl MqttSession {
     pub fn from_config(config: MqttConfig) -> Arc<Mutex<MqttSession>> {
+        let config_clone = config.clone();
         let mut cert_file = File::open(config.cert_path.unwrap_or("/app/root-ca.crt".to_string()))
             .expect("Could not open root ca for mqtt connection.");
         let mut cert = Vec::new();
@@ -36,7 +38,15 @@ impl MqttSession {
             ))
             .set_connection_method(ConnectionMethod::Tls(cert, None));
         let (client, receiver) = MqttClient::start(mqtt_options).unwrap();
-        Arc::new(Mutex::new(MqttSession { client, receiver }))
+        Arc::new(Mutex::new(MqttSession { client, receiver, config: config_clone }))
+    }
+
+    pub fn get_client_id(&self) -> &str {
+        &self.config.client_id
+    }
+
+    pub fn get_status_publish_interval(&self) -> u64 {
+        self.config.status_publish_interval_secs.unwrap_or(60)
     }
 
     pub fn publish<S, V, B>(&mut self, topic: S, qos: QoS, retained: B, payload: V) -> Result<(), ClientError>

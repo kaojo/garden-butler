@@ -1,4 +1,4 @@
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LayoutConfig {
     power: Option<u8>,
     error: Option<u8>,
@@ -35,7 +35,7 @@ impl LayoutConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ValveConfig {
     valve: u8,
     button: Option<u8>,

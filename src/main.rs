@@ -9,6 +9,7 @@ extern crate rumqtt;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate serde_json;
 #[cfg(feature = "gpio")]
 extern crate sysfs_gpio;
 extern crate tokio;
@@ -16,7 +17,6 @@ extern crate tokio_channel;
 extern crate tokio_chrono;
 extern crate tokio_signal;
 extern crate tokio_timer;
-extern crate serde_json;
 
 use std::sync::{Arc, Mutex};
 
@@ -37,8 +37,8 @@ use embedded::gpio::GpioPinLayout;
 use mqtt::command::command_listener;
 use mqtt::configuration::MqttConfig;
 use mqtt::MqttSession;
+use mqtt::status::{PinLayoutStatus, WateringScheduleConfigStatus, LayoutConfigStatus};
 use schedule::{WateringScheduleConfigs, WateringScheduler};
-use mqtt::status::PinLayoutStatus;
 
 mod communication;
 mod embedded;
@@ -54,7 +54,8 @@ fn main() {
     println!("Garden buttler starting ...");
 
     tokio::run(lazy(|| {
-        let layout = create_pin_layout(LayoutConfig::default(), LAYOUT_TYPE);
+        let layout_config = LayoutConfig::default();
+        let layout = create_pin_layout(layout_config.clone(), LAYOUT_TYPE);
 
         let mut ctrl_c_senders = Vec::new();
         let (layout_command_sender, layout_command_receiver): (Sender<LayoutCommand>, Receiver<LayoutCommand>) = crossbeam::unbounded();
@@ -88,27 +89,17 @@ fn main() {
                 );
             }
 
-        let mqtt_session: Arc<Mutex<MqttSession>> = MqttSession::from_config(MqttConfig::default());
         let mqtt_config = MqttConfig::default();
+        let mqtt_session: Arc<Mutex<MqttSession>> = MqttSession::from_config(mqtt_config.clone());
         // TODO replace global subscription with only relevant topics for reception of commands
         mqtt_session.lock().unwrap().client
-            .subscribe(format!("{}/garden-butler/#", &mqtt_config.client_id), QoS::AtLeastOnce)
+            .subscribe(format!("{}/garden-butler/command/#", &mqtt_config.client_id), QoS::AtLeastOnce)
             .unwrap();
         tokio::spawn({
             let command_sender_clone = layout_command_sender.clone();
             let (s, r) = crossbeam::unbounded();
             ctrl_c_senders.push((s.clone(), r.clone()));
             command_listener(&mqtt_session, command_sender_clone)
-                .select2(CancelReceiverFuture::new(r.clone()))
-                .map(|_| ())
-                .map_err(|_| ())
-        });
-
-        tokio::spawn({
-            let (s, r) = crossbeam::unbounded();
-            ctrl_c_senders.push((s.clone(), r.clone()));
-
-            PinLayoutStatus::new(Arc::clone(&layout), Arc::clone(&mqtt_session), mqtt_config)
                 .select2(CancelReceiverFuture::new(r.clone()))
                 .map(|_| ())
                 .map_err(|_| ())
@@ -128,6 +119,37 @@ fn main() {
                 );
             });
         }
+        let watering_scheduler = Arc::new(Mutex::new(scheduler));
+
+        tokio::spawn({
+            let (s, r) = crossbeam::unbounded();
+            ctrl_c_senders.push((s.clone(), r.clone()));
+
+            PinLayoutStatus::new(Arc::clone(&layout), Arc::clone(&mqtt_session), mqtt_config.clone())
+                .select2(CancelReceiverFuture::new(r.clone()))
+                .map(|_| ())
+                .map_err(|_| ())
+        });
+
+        tokio::spawn({
+            let (s, r) = crossbeam::unbounded();
+            ctrl_c_senders.push((s.clone(), r.clone()));
+
+            WateringScheduleConfigStatus::new(Arc::clone(&watering_scheduler), Arc::clone(&mqtt_session), mqtt_config.clone())
+                .select2(CancelReceiverFuture::new(r.clone()))
+                .map(|_| ())
+                .map_err(|_| ())
+        });
+
+        tokio::spawn({
+            let (s, r) = crossbeam::unbounded();
+            ctrl_c_senders.push((s.clone(), r.clone()));
+
+            LayoutConfigStatus::new(&layout_config, Arc::clone(&mqtt_session), mqtt_config.clone())
+                .select2(CancelReceiverFuture::new(r.clone()))
+                .map(|_| ())
+                .map_err(|_| ())
+        });
 
         println!("Garden buttler started ...");
         let ctrl_c = tokio_signal::ctrl_c()

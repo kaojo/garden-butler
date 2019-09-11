@@ -47,6 +47,10 @@ impl WateringScheduler {
         }
     }
 
+    pub fn get_config(&self) -> &WateringScheduleConfigs {
+        &self.configs
+    }
+
     pub fn start(&mut self) -> Vec<impl Future<Item=(), Error=()> + Send> {
         let mut schedules = Vec::new();
         for config in self.configs.get_schedules().iter() {
