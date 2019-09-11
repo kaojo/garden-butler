@@ -19,22 +19,26 @@ extern crate tokio_timer;
 
 use std::sync::{Arc, Mutex};
 
-use futures::future::lazy;
+use crossbeam::{Receiver, Sender};
 use futures::{Future, Stream};
+use futures::future::lazy;
 use rumqtt::QoS;
 use serde::export::PhantomData;
 
 use communication::CancelReceiverFuture;
+use embedded::{PinLayout, ToggleValve};
+use embedded::command::LayoutCommand;
 use embedded::configuration::LayoutConfig;
 #[cfg(not(feature = "gpio"))]
 use embedded::fake::FakePinLayout;
 #[cfg(feature = "gpio")]
 use embedded::gpio::GpioPinLayout;
-use embedded::{PinLayout, ToggleValve};
 use mqtt::command::command_listener;
 use mqtt::configuration::MqttConfig;
 use mqtt::MqttSession;
 use schedule::{WateringScheduleConfigs, WateringScheduler};
+use std::time::Duration;
+use crossbeam::TryRecvError;
 
 mod communication;
 mod embedded;
@@ -50,51 +54,89 @@ fn main() {
     println!("Garden buttler starting ...");
 
     tokio::run(lazy(|| {
-        let mut ctrl_c_senders = Vec::new();
-
         let layout = create_pin_layout(LayoutConfig::default(), LAYOUT_TYPE);
-        let mqtt_session: Arc<Mutex<MqttSession>> = MqttSession::from_config(MqttConfig::default());
-        let mut scheduler =
-            WateringScheduler::new(WateringScheduleConfigs::default(), Arc::clone(&layout));
 
-        #[cfg(feature = "gpio")]
-        {
-            let (s, r) = crossbeam::unbounded();
-            ctrl_c_senders.push((s.clone(), r.clone()));
-            let button_streams = layout.lock().unwrap().get_button_streams();
-            tokio::spawn(
-                button_streams
+        let mut ctrl_c_senders = Vec::new();
+        let (layout_command_sender, layout_command_receiver): (Sender<LayoutCommand>, Receiver<LayoutCommand>) = crossbeam::unbounded();
+
+        tokio::spawn(
+            {
+                let (s, r) = crossbeam::unbounded();
+                ctrl_c_senders.push((s.clone(), r.clone()));
+                let command_receiver_clone = layout_command_receiver.clone();
+                let layout_clone = Arc::clone(&layout);
+
+                tokio_timer::Interval::new_interval(Duration::from_secs(1))
+                    .map_err(|_| ())
+                    .map(move |_| {
+                        command_receiver_clone
+                            .try_recv()
+                            .map_err(|e| {
+                                match e {
+                                    TryRecvError::Empty => {},
+                                    TryRecvError::Disconnected => {println!("error = {}", e)},
+                                }
+                            })
+                    })
+                    .filter(|r| r.is_ok())
+                    .map(|r| r.unwrap())
+                    .inspect(|n| println!("{:?}", n))
+                    .for_each(move |command| {
+                        match command {
+                            LayoutCommand::Open(pin_num) => {
+                                if let Ok(valve) = layout_clone.lock().unwrap().find_pin(pin_num) {
+                                    valve.lock().unwrap().turn_on();
+                                }
+                            },
+                            LayoutCommand::Close(pin_num) => {
+                                if let Ok(valve) = layout_clone.lock().unwrap().find_pin(pin_num) {
+                                    valve.lock().unwrap().turn_off();
+                                }
+                            },
+                        }
+                        Ok(())
+                    })
                     .select2(CancelReceiverFuture::new(r.clone()))
                     .map(|_| ())
-                    .map_err(|_| ()),
-            );
-        }
+                    .map_err(|_| ())
+            }
+        );
 
+        #[cfg(feature = "gpio")]
+            {
+                let (s, r) = crossbeam::unbounded();
+                ctrl_c_senders.push((s.clone(), r.clone()));
+                let button_streams = layout.lock().unwrap().get_button_streams();
+                tokio::spawn(
+                    button_streams
+                        .select2(CancelReceiverFuture::new(r.clone()))
+                        .map(|_| ())
+                        .map_err(|_| ())
+                );
+            }
+
+        let mqtt_session: Arc<Mutex<MqttSession>> = MqttSession::from_config(MqttConfig::default());
         let mqtt_config = MqttConfig::default();
         // TODO replace global subscription with only relevant topics for reception of commands
-        mqtt_session
-            .lock()
-            .unwrap()
-            .client
-            .subscribe(
-                format!("{}/garden-butler/#", &mqtt_config.client_id),
-                QoS::AtLeastOnce,
-            )
+        mqtt_session.lock().unwrap().client
+            .subscribe(format!("{}/garden-butler/#", &mqtt_config.client_id), QoS::AtLeastOnce)
             .unwrap();
         tokio::spawn({
+            let command_sender_clone = layout_command_sender.clone();
             let (s, r) = crossbeam::unbounded();
             ctrl_c_senders.push((s.clone(), r.clone()));
-            command_listener(&mqtt_session, &layout)
+            command_listener(&mqtt_session, command_sender_clone)
                 .select2(CancelReceiverFuture::new(r.clone()))
                 .map(|_| ())
                 .map_err(|_| ())
         });
 
+        let mut scheduler =
+            WateringScheduler::new(WateringScheduleConfigs::default(), layout_command_sender.clone());
         if scheduler.enabled {
             scheduler.start().into_iter().for_each(|schedule_future| {
                 let (s, r) = crossbeam::unbounded();
                 ctrl_c_senders.push((s.clone(), r.clone()));
-
                 tokio::spawn(
                     schedule_future
                         .select2(CancelReceiverFuture::new(r.clone()))
@@ -130,9 +172,9 @@ fn main() {
 }
 
 fn create_pin_layout<T, U>(config: LayoutConfig, _: PhantomData<T>) -> Arc<Mutex<T>>
-where
-    T: PinLayout<U> + 'static,
-    U: ToggleValve + Send + 'static,
+    where
+        T: PinLayout<U> + 'static,
+        U: ToggleValve + Send + 'static,
 {
     Arc::new(Mutex::new(T::new(&config)))
 }

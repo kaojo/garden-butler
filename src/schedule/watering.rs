@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use chrono::Local;
 use cron::Schedule;
+use crossbeam::Sender;
 use futures::{Future, Stream};
 use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
@@ -14,34 +15,24 @@ use tokio_timer::Delay;
 
 use communication::CancelReceiverFuture;
 use embedded::{PinLayout, ToggleValve, ValvePinNumber};
+use embedded::command::LayoutCommand;
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
 
-pub struct WateringScheduler<T, U>
-where
-    T: PinLayout<U> + 'static,
-    U: ToggleValve + Send + 'static,
-{
+pub struct WateringScheduler {
     configs: WateringScheduleConfigs,
     senders: HashMap<ValvePinNumber, crossbeam::Sender<()>>,
-    layout: Arc<Mutex<T>>,
-    toggle_valve_type: PhantomData<U>,
+    command_sender: Sender<LayoutCommand>,
     pub enabled: bool,
 }
 
-impl<T, U> WateringScheduler<T, U>
-where
-    T: PinLayout<U> + 'static,
-    U: ToggleValve + Send + 'static,
-{
-    pub fn new(configs: WateringScheduleConfigs, layout: Arc<Mutex<T>>) -> WateringScheduler<T, U> {
+impl WateringScheduler {
+    pub fn new(configs: WateringScheduleConfigs, command_sender: Sender<LayoutCommand>) -> WateringScheduler {
         let senders = HashMap::new();
         let enabled = configs.enabled.unwrap_or(true);
-        let toggle_valve_type = PhantomData;
         WateringScheduler {
             senders,
-            layout,
+            command_sender,
             configs,
-            toggle_valve_type,
             enabled,
         }
     }
@@ -58,14 +49,14 @@ where
         }
     }
 
-    pub fn start(&mut self) -> Vec<impl Future<Item = (), Error = ()> + Send> {
+    pub fn start(&mut self) -> Vec<impl Future<Item=(), Error=()> + Send> {
         let mut schedules = Vec::new();
         for config in self.configs.get_schedules().iter() {
             println!(
                 "Creating watering schedule for valve {}",
                 config.get_valve()
             );
-            if let Ok(result) = create_schedule(&mut self.senders, Arc::clone(&self.layout), config)
+            if let Ok(result) = create_schedule(&mut self.senders, &self.command_sender, config)
             {
                 schedules.push(result);
             }
@@ -74,27 +65,12 @@ where
     }
 }
 
-fn create_schedule<T, U>(
+fn create_schedule(
     senders: &mut HashMap<ValvePinNumber, crossbeam::Sender<()>>,
-    layout: Arc<Mutex<T>>,
+    command_sender: &Sender<LayoutCommand>,
     schedule_config: &WateringScheduleConfig,
-) -> Result<impl Future<Item = (), Error = ()> + Send, ()>
-where
-    T: PinLayout<U> + 'static,
-    U: ToggleValve + Send + 'static,
-{
+) -> Result<impl Future<Item=(), Error=()> + Send, ()> {
     let valve_pin_num = schedule_config.get_valve();
-
-    let toggle_valve = Arc::clone(
-        layout
-            .lock()
-            .unwrap()
-            .find_pin(ValvePinNumber(valve_pin_num))?,
-    );
-    println!(
-        "Creating new schedule for valve pin num {}.",
-        toggle_valve.lock().unwrap().get_valve_pin_num().0
-    );
 
     let (sender, receiver) = crossbeam::unbounded();
     senders.insert(ValvePinNumber(valve_pin_num), sender);
@@ -102,32 +78,39 @@ where
     let watering_duration = *schedule_config.get_schedule().get_duration_seconds();
     let cron_expression = schedule_config.get_schedule().get_cron_expression();
     let cron = Schedule::from_str(cron_expression).map_err(|err| println!("{:?}", err))?;
+    let command_sender_clone = command_sender.clone();
     let task = CronInterval::new(cron)
         .map_err(|_| ())
         .for_each(move |_| {
             println!(
-                "{}: Turning on valve {}.",
+                "{}: Send open command for valve {}.",
                 Local::now().format("%Y-%m-%d][%H:%M:%S"),
                 valve_pin_num
             );
-            toggle_valve.lock().unwrap().turn_on().map_err(|_| ())?;
-            let clone = Arc::clone(&toggle_valve);
+            let turn_on_send_result = command_sender_clone.send(LayoutCommand::Open(ValvePinNumber(valve_pin_num)));
+            let command_sender_clone_clone = command_sender_clone.clone();
             let turn_off = Delay::new(now().add(Duration::from_secs(watering_duration)))
                 .map_err(|e| println!("turn off stream error = {:?}", e))
                 .and_then(move |_| {
                     println!(
-                        "{}: Turning off valve {}.",
+                        "{}: Send close command for valve {}.",
                         Local::now().format("%Y-%m-%d][%H:%M:%S"),
                         valve_pin_num
                     );
-                    clone
-                        .lock()
-                        .unwrap()
-                        .turn_off()
-                        .map_err(|e| println!("turn off error = {:?}", e))?;
-                    Ok(())
+                    command_sender_clone_clone.send(LayoutCommand::Close(ValvePinNumber(valve_pin_num)))
+                        .map_err(|e| println!("error = {}", e))
                 });
-            tokio::spawn(turn_off);
+            match turn_on_send_result {
+                Ok(_) => {
+                    tokio::spawn(turn_off);
+                }
+                Err(e) => {
+                    return {
+                        println!("error = {}", e);
+                        Err(())
+                    };
+                }
+            }
             Ok(())
         })
         .select2(CancelReceiverFuture::new(receiver)) // TODO test shutoff

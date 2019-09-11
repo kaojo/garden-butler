@@ -4,21 +4,19 @@ use std::str::{FromStr, Utf8Error};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crossbeam::Sender;
 use rumqtt::{Notification, Publish};
 use tokio::prelude::{Future, Stream};
 
-use embedded::{PinLayout, ToggleValve, ValvePinNumber};
+use embedded::command::LayoutCommand;
+use embedded::ValvePinNumber;
 use mqtt::MqttSession;
 
-pub fn command_listener<T, U>(
+pub fn command_listener(
     session: &Arc<Mutex<MqttSession>>,
-    pin_layout: &Arc<Mutex<T>>,
-) -> impl Future<Item = (), Error = ()> + Send
-where
-    T: PinLayout<U> + Send + 'static,
-    U: ToggleValve + Send + 'static,
+    sender: Sender<LayoutCommand>,
+) -> impl Future<Item=(), Error=()> + Send
 {
-    let layout = Arc::clone(pin_layout);
     let mqtt_session = Arc::clone(session);
 
     tokio_timer::Interval::new_interval(Duration::from_secs(1))
@@ -38,38 +36,30 @@ where
             Err(_) => {}
         })
         .for_each(move |n| {
-            match n {
-                Ok(notification) => match notification {
-                    Notification::Publish(publish) => {
-                        if publish
-                            .topic_name
-                            .ends_with("/garden-butler/command/layout/open")
-                        {
-                            let s = get_valve_pin_num_from_message(publish);
-                            if let Ok(Ok(pin_num)) = s {
-                                if let Ok(valve) =
-                                    layout.lock().unwrap().find_pin(ValvePinNumber(pin_num))
-                                {
-                                    valve.lock().unwrap().turn_on().map_err(|_| ())?;
-                                }
-                            }
-                        } else if publish
-                            .topic_name
-                            .ends_with("/garden-butler/command/layout/close")
-                        {
-                            let s = get_valve_pin_num_from_message(publish);
-                            if let Ok(Ok(pin_num)) = s {
-                                if let Ok(valve) =
-                                    layout.lock().unwrap().find_pin(ValvePinNumber(pin_num))
-                                {
-                                    valve.lock().unwrap().turn_off().map_err(|_| ())?;
-                                }
-                            }
+            if let Ok(Notification::Publish(publish)) = n {
+                if publish
+                    .topic_name
+                    .ends_with("/garden-butler/command/layout/open")
+                {
+                    let s = get_valve_pin_num_from_message(publish);
+                    if let Ok(Ok(pin_num)) = s {
+                        match sender.send(LayoutCommand::Open(pin_num)) {
+                            Ok(_) => {}
+                            Err(e) => { println!("error = {}", e) }
                         }
                     }
-                    _ => {}
-                },
-                Err(_) => {}
+                } else if publish
+                    .topic_name
+                    .ends_with("/garden-butler/command/layout/close")
+                {
+                    let s = get_valve_pin_num_from_message(publish);
+                    if let Ok(Ok(pin_num)) = s {
+                        match sender.send(LayoutCommand::Close(pin_num)) {
+                            Ok(_) => {}
+                            Err(e) => { println!("error = {}", e) }
+                        }
+                    }
+                }
             }
             Ok(())
         })
@@ -78,6 +68,7 @@ where
 
 fn get_valve_pin_num_from_message(
     publish: Publish,
-) -> Result<Result<u8, ParseIntError>, Utf8Error> {
-    std::str::from_utf8(publish.payload.deref()).map(|s| u8::from_str(s))
+) -> Result<Result<ValvePinNumber, ParseIntError>, Utf8Error> {
+    std::str::from_utf8(publish.payload.deref())
+        .map(|s| u8::from_str(s).map(|n| ValvePinNumber(n)))
 }

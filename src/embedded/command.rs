@@ -1,6 +1,7 @@
 use embedded::ValvePinNumber;
 
-pub enum Command {
+#[derive(Debug)]
+pub enum LayoutCommand {
     Open(ValvePinNumber),
     Close(ValvePinNumber),
 }
