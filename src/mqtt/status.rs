@@ -33,7 +33,7 @@ impl PinLayoutStatus {
             .map(move |_| layout.lock().unwrap().get_layout_status())
             .inspect(|status| println!("{}: {:?}", Local::now().format("%Y-%m-%d][%H:%M:%S"), status))
             .fold(mqtt_session, move |mut mqtt_session, status| {
-                let topic = format!("{}/garden-butler/layout/status", mqtt_config.client_id);
+                let topic = format!("{}/garden-butler/status/layout", mqtt_config.client_id);
                 let message = serde_json::to_string(&status).unwrap();
                 mqtt_session.lock().unwrap().publish(topic, QoS::AtMostOnce, true, message);
                 Ok(mqtt_session)

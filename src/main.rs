@@ -38,7 +38,7 @@ use mqtt::command::command_listener;
 use mqtt::configuration::MqttConfig;
 use mqtt::MqttSession;
 use schedule::{WateringScheduleConfigs, WateringScheduler};
-use mqtt::publish::PinLayoutStatus;
+use mqtt::status::PinLayoutStatus;
 
 mod communication;
 mod embedded;

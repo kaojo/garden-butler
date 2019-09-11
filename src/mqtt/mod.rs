@@ -8,7 +8,7 @@ use mqtt::configuration::MqttConfig;
 
 pub mod command;
 pub mod configuration;
-pub mod publish;
+pub mod status;
 
 pub struct MqttSession {
     pub client: MqttClient,
