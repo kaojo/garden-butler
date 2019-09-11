@@ -27,7 +27,7 @@ use serde::export::PhantomData;
 
 use communication::CancelReceiverFuture;
 use embedded::{PinLayout, ToggleValve};
-use embedded::command::LayoutCommand;
+use embedded::command::{LayoutCommand, LayoutCommandListener};
 use embedded::configuration::LayoutConfig;
 #[cfg(not(feature = "gpio"))]
 use embedded::fake::FakePinLayout;
@@ -37,8 +37,6 @@ use mqtt::command::command_listener;
 use mqtt::configuration::MqttConfig;
 use mqtt::MqttSession;
 use schedule::{WateringScheduleConfigs, WateringScheduler};
-use std::time::Duration;
-use crossbeam::TryRecvError;
 
 mod communication;
 mod embedded;
@@ -66,36 +64,7 @@ fn main() {
                 let command_receiver_clone = layout_command_receiver.clone();
                 let layout_clone = Arc::clone(&layout);
 
-                tokio_timer::Interval::new_interval(Duration::from_secs(1))
-                    .map_err(|_| ())
-                    .map(move |_| {
-                        command_receiver_clone
-                            .try_recv()
-                            .map_err(|e| {
-                                match e {
-                                    TryRecvError::Empty => {},
-                                    TryRecvError::Disconnected => {println!("error = {}", e)},
-                                }
-                            })
-                    })
-                    .filter(|r| r.is_ok())
-                    .map(|r| r.unwrap())
-                    .inspect(|n| println!("{:?}", n))
-                    .for_each(move |command| {
-                        match command {
-                            LayoutCommand::Open(pin_num) => {
-                                if let Ok(valve) = layout_clone.lock().unwrap().find_pin(pin_num) {
-                                    valve.lock().unwrap().turn_on();
-                                }
-                            },
-                            LayoutCommand::Close(pin_num) => {
-                                if let Ok(valve) = layout_clone.lock().unwrap().find_pin(pin_num) {
-                                    valve.lock().unwrap().turn_off();
-                                }
-                            },
-                        }
-                        Ok(())
-                    })
+                LayoutCommandListener::new(layout_clone, command_receiver_clone)
                     .select2(CancelReceiverFuture::new(r.clone()))
                     .map(|_| ())
                     .map_err(|_| ())
@@ -157,7 +126,6 @@ fn main() {
                 ctrl_c_senders.len()
             );
             ctrl_c_senders.iter().for_each(|sender| {
-                println!("ctrl-c received!");
                 sender
                     .0
                     .send("ctrl-c received!".to_string())

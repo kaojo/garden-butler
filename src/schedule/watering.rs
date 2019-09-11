@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::ops::Add;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::Local;
@@ -14,7 +12,7 @@ use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
 use communication::CancelReceiverFuture;
-use embedded::{PinLayout, ToggleValve, ValvePinNumber};
+use embedded::ValvePinNumber;
 use embedded::command::LayoutCommand;
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
 
