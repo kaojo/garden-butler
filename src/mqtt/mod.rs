@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 
-use rumqtt::{ClientError, ConnectionMethod, MqttClient, MqttOptions, Notification, QoS, Receiver, SecurityOptions};
+use rumqtt::{ClientError, ConnectionMethod, LastWill, MqttClient, MqttOptions, Notification, QoS, Receiver, SecurityOptions};
 
 use mqtt::configuration::MqttConfig;
 
@@ -36,7 +36,8 @@ impl MqttSession {
                 config.username.unwrap_or("".to_string()),
                 config.password.unwrap_or("".to_string()),
             ))
-            .set_connection_method(ConnectionMethod::Tls(cert, None));
+            .set_connection_method(ConnectionMethod::Tls(cert, None))
+            .set_last_will(get_last_will(config_clone.clone()));
         let (client, receiver) = MqttClient::start(mqtt_options).unwrap();
         Arc::new(Mutex::new(MqttSession { client, receiver, config: config_clone }))
     }
@@ -56,5 +57,14 @@ impl MqttSession {
             B: Into<bool>,
     {
         self.client.publish(topic, qos, retained, payload)
+    }
+}
+
+fn get_last_will(mqtt_config: MqttConfig) -> LastWill {
+    LastWill {
+        topic: format!("{}/garden-butler/status/health", &mqtt_config.client_id),
+        message: String::from("OFFLINE"),
+        qos: QoS::AtLeastOnce,
+        retain: true,
     }
 }
