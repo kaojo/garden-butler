@@ -143,7 +143,7 @@ fn main() {
             let (s, r) = crossbeam::unbounded();
             ctrl_c_channels.push((s.clone(), r.clone()));
 
-            WateringScheduleConfigStatus::new(Arc::clone(&watering_scheduler), Arc::clone(&mqtt_session), mqtt_config.clone())
+            WateringScheduleConfigStatus::new(Arc::clone(&watering_scheduler), Arc::clone(&mqtt_session))
                 .select2(CancelReceiverFuture::new(r.clone()))
                 .map(|_| ())
                 .map_err(|_| ())
@@ -154,7 +154,7 @@ fn main() {
             let (s, r) = crossbeam::unbounded();
             ctrl_c_channels.push((s.clone(), r.clone()));
 
-            LayoutConfigStatus::new(&layout_config, Arc::clone(&mqtt_session), mqtt_config.clone())
+            LayoutConfigStatus::new(&layout_config, Arc::clone(&mqtt_session))
                 .select2(CancelReceiverFuture::new(r.clone()))
                 .map(|_| ())
                 .map_err(|_| ())

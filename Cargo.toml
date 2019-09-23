@@ -22,5 +22,5 @@ tokio-chrono = {path = "../tokio-chrono"}
 config = {version = "0.9", features = ["json"]}
 chrono = { version = "0.4", features = ["serde"] }
 cron = "0.6"
-rumqtt = "0.30"
+rumqtt = "0.31"
 crossbeam = "0.7"

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 
-use rumqtt::{ClientError, ConnectionMethod, LastWill, MqttClient, MqttOptions, Notification, QoS, Receiver, SecurityOptions};
+use rumqtt::{ClientError, LastWill, MqttClient, MqttOptions, Notification, QoS, Receiver, SecurityOptions};
 
 use mqtt::configuration::MqttConfig;
 
@@ -36,7 +36,8 @@ impl MqttSession {
                 config.username.unwrap_or("".to_string()),
                 config.password.unwrap_or("".to_string()),
             ))
-            .set_connection_method(ConnectionMethod::Tls(cert, None))
+            .set_ca(cert)
+            //.set_connection_method(ConnectionMethod::Tls(cert, None))
             .set_last_will(get_last_will(config_clone.clone()));
         let (client, receiver) = MqttClient::start(mqtt_options).unwrap();
         Arc::new(Mutex::new(MqttSession { client, receiver, config: config_clone }))
@@ -44,10 +45,6 @@ impl MqttSession {
 
     pub fn get_client_id(&self) -> &str {
         &self.config.client_id
-    }
-
-    pub fn get_status_publish_interval(&self) -> u64 {
-        self.config.status_publish_interval_secs.unwrap_or(60)
     }
 
     pub fn publish<S, V, B>(&mut self, topic: S, qos: QoS, retained: B, payload: V) -> Result<(), ClientError>

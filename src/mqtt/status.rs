@@ -31,7 +31,7 @@ impl PinLayoutStatus {
         let inner = Box::new(interval
             .map(move |_| layout.lock().unwrap().get_layout_status())
             .inspect(|status| println!("{}: {:?}", Local::now().format("%Y-%m-%d][%H:%M:%S"), status))
-            .fold(mqtt_session, move |mut mqtt_session, status| {
+            .fold(mqtt_session, move |mqtt_session, status| {
                 let topic = format!("{}/garden-butler/status/layout", mqtt_config.client_id);
                 let message = serde_json::to_string(&status).unwrap();
                 match mqtt_session.lock().unwrap().publish(topic, QoS::AtMostOnce, true, message) {
@@ -65,8 +65,7 @@ pub struct WateringScheduleConfigStatus {
 impl WateringScheduleConfigStatus {
     pub fn new(
         watering_scheduler: Arc<Mutex<WateringScheduler>>,
-        mqtt_session: Arc<Mutex<MqttSession>>,
-        mqtt_config: MqttConfig) -> Self {
+        mqtt_session: Arc<Mutex<MqttSession>>) -> Self {
         let inner = Box::new(
             {
                 let mut session = mqtt_session.lock().unwrap();
@@ -104,8 +103,7 @@ pub struct LayoutConfigStatus {
 impl LayoutConfigStatus {
     pub fn new(
         layout: &LayoutConfig,
-        mqtt_session: Arc<Mutex<MqttSession>>,
-        mqtt_config: MqttConfig) -> Self {
+        mqtt_session: Arc<Mutex<MqttSession>>) -> Self {
         let inner = Box::new(
             {
                 let mut session = mqtt_session.lock().unwrap();
