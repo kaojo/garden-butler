@@ -11,7 +11,7 @@ use tokio_chrono::CronInterval;
 use tokio_timer::clock::now;
 use tokio_timer::Delay;
 
-use communication::CancelReceiverFuture;
+use communication::ReceiverFuture;
 use embedded::ValvePinNumber;
 use embedded::command::LayoutCommand;
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
@@ -115,7 +115,7 @@ fn create_schedule(
             }
             Ok(())
         })
-        .select2(CancelReceiverFuture::new(receiver)) // TODO test shutoff
+        .select2(ReceiverFuture::new(receiver)) // TODO test shutoff
         .map(|_| ())
         .map_err(|_| ());
     Ok(task)

@@ -47,7 +47,7 @@ pub fn command_listener(
                         if let Ok(Ok(pin_num)) = s {
                             match sender.send(LayoutCommand::Open(pin_num)) {
                                 Ok(_) => {}
-                                Err(e) => { println!("error = {}", e) }
+                                Err(e) => { println!("error sending open command = {}", e) }
                             }
                         }
                     } else if publish
@@ -58,7 +58,7 @@ pub fn command_listener(
                         if let Ok(Ok(pin_num)) = s {
                             match sender.send(LayoutCommand::Close(pin_num)) {
                                 Ok(_) => {}
-                                Err(e) => { println!("error = {}", e) }
+                                Err(e) => { println!("error sending close command = {}", e) }
                             }
                         }
                     }

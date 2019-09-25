@@ -20,7 +20,8 @@ pub struct LayoutCommandListener
 impl LayoutCommandListener {
     pub fn new<T, U>(
         layout: Arc<Mutex<T>>,
-        receiver: crossbeam::Receiver<LayoutCommand>) -> Self
+        receiver: crossbeam::Receiver<LayoutCommand>,
+        sender: crossbeam::Sender<Result<(),()>>) -> Self
         where
             T: PinLayout<U> + Send + 'static,
             U: ToggleValve + Send + 'static,
@@ -34,14 +35,14 @@ impl LayoutCommandListener {
                         .map_err(|e| {
                             match e {
                                 TryRecvError::Empty => {}
-                                TryRecvError::Disconnected => { println!("error = {}", e) }
+                                TryRecvError::Disconnected => { println!("error receiving signals for layout command listener= {}", e) }
                             }
                         })
                 })
                 .filter(|r| r.is_ok())
                 .map(|r| r.unwrap())
                 .inspect(|n| println!("{:?}", n))
-                .for_each(move |command| {
+                .and_then(move |command| {
                     match command {
                         LayoutCommand::Open(pin_num) => {
                             if let Ok(valve) = layout.lock().unwrap().find_pin(pin_num) {
@@ -54,6 +55,10 @@ impl LayoutCommandListener {
                             }
                         }
                     }
+                    Ok(())
+                })
+                .for_each(move |_| {
+                    let _ = sender.send(Ok(())).map_err(|e| println!("error sending signal for layout status update. = {}", e));
                     Ok(())
                 })
         );

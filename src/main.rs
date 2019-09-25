@@ -26,7 +26,7 @@ use futures::future::lazy;
 use rumqtt::QoS;
 use serde::export::PhantomData;
 
-use communication::CancelReceiverFuture;
+use communication::ReceiverFuture;
 use embedded::{PinLayout, ToggleValve};
 use embedded::command::{LayoutCommand, LayoutCommandListener};
 use embedded::configuration::LayoutConfig;
@@ -37,7 +37,7 @@ use embedded::gpio::GpioPinLayout;
 use mqtt::command::command_listener;
 use mqtt::configuration::MqttConfig;
 use mqtt::MqttSession;
-use mqtt::status::{PinLayoutStatus, WateringScheduleConfigStatus, LayoutConfigStatus};
+use mqtt::status::{LayoutConfigStatus, PinLayoutStatus, WateringScheduleConfigStatus};
 use schedule::{WateringScheduleConfigs, WateringScheduler};
 
 mod communication;
@@ -63,15 +63,17 @@ fn main() {
 
         // command listening
         let (layout_command_sender, layout_command_receiver): (Sender<LayoutCommand>, Receiver<LayoutCommand>) = crossbeam::unbounded();
+        let (layout_status_send_sender, layout_status_send_receiver): (Sender<Result<(), ()>>, Receiver<Result<(), ()>>) = crossbeam::unbounded();
         tokio::spawn(
             {
                 let (s, r) = crossbeam::unbounded();
                 ctrl_c_channels.push((s.clone(), r.clone()));
-                let command_receiver_clone = layout_command_receiver.clone();
-                let layout_clone = Arc::clone(&layout);
 
-                LayoutCommandListener::new(layout_clone, command_receiver_clone)
-                    .select2(CancelReceiverFuture::new(r.clone()))
+                LayoutCommandListener::new(
+                    Arc::clone(&layout),
+                    layout_command_receiver.clone(),
+                    layout_status_send_sender.clone())
+                    .select2(ReceiverFuture::new(r.clone()))
                     .map(|_| ())
                     .map_err(|_| ())
             }
@@ -86,7 +88,7 @@ fn main() {
                         ctrl_c_channels.push((s.clone(), r.clone()));
                         let button_streams = layout.lock().unwrap().get_button_streams();
                         button_streams
-                            .select2(CancelReceiverFuture::new(r.clone()))
+                            .select2(ReceiverFuture::new(r.clone()))
                             .map(|_| ())
                             .map_err(|_| ())
                     }
@@ -105,7 +107,7 @@ fn main() {
             let (s, r) = crossbeam::unbounded();
             ctrl_c_channels.push((s.clone(), r.clone()));
             command_listener(&mqtt_session, command_sender_clone)
-                .select2(CancelReceiverFuture::new(r.clone()))
+                .select2(ReceiverFuture::new(r.clone()))
                 .map(|_| ())
                 .map_err(|_| ())
         });
@@ -119,7 +121,7 @@ fn main() {
                 ctrl_c_channels.push((s.clone(), r.clone()));
                 tokio::spawn(
                     schedule_future
-                        .select2(CancelReceiverFuture::new(r.clone()))
+                        .select2(ReceiverFuture::new(r.clone()))
                         .map(|_| ())
                         .map_err(|_| ()),
                 );
@@ -132,8 +134,13 @@ fn main() {
             let (s, r) = crossbeam::unbounded();
             ctrl_c_channels.push((s.clone(), r.clone()));
 
-            PinLayoutStatus::new(Arc::clone(&layout), Arc::clone(&mqtt_session), mqtt_config.clone())
-                .select2(CancelReceiverFuture::new(r.clone()))
+            PinLayoutStatus::new(
+                Arc::clone(&layout),
+                Arc::clone(&mqtt_session),
+                mqtt_config.clone(),
+                layout_status_send_receiver
+            )
+                .select2(ReceiverFuture::new(r.clone()))
                 .map(|_| ())
                 .map_err(|_| ())
         });
@@ -144,7 +151,7 @@ fn main() {
             ctrl_c_channels.push((s.clone(), r.clone()));
 
             WateringScheduleConfigStatus::new(Arc::clone(&watering_scheduler), Arc::clone(&mqtt_session))
-                .select2(CancelReceiverFuture::new(r.clone()))
+                .select2(ReceiverFuture::new(r.clone()))
                 .map(|_| ())
                 .map_err(|_| ())
         });
@@ -155,7 +162,7 @@ fn main() {
             ctrl_c_channels.push((s.clone(), r.clone()));
 
             LayoutConfigStatus::new(&layout_config, Arc::clone(&mqtt_session))
-                .select2(CancelReceiverFuture::new(r.clone()))
+                .select2(ReceiverFuture::new(r.clone()))
                 .map(|_| ())
                 .map_err(|_| ())
         });
