@@ -3,9 +3,10 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use embedded::configuration::{LayoutConfig, ValveConfig};
-use embedded::{Error, PinLayout, ToggleValve, ValvePinNumber};
+use embedded::{Error, PinLayout, ToggleValve, ValvePinNumber, LayoutStatus, ToggleValveStatus};
 use futures::{lazy, Future, Stream};
 use sysfs_gpio::{Direction, Edge, Pin};
+use embedded::ValveStatus::{CLOSED, OPEN};
 
 pub struct GpioPinLayout {
     power_pin: Option<Pin>,
@@ -47,6 +48,27 @@ impl PinLayout<GpioToggleValve> for GpioPinLayout {
         match result_option {
             None => Err(()),
             Some(valve) => Ok(valve),
+        }
+    }
+
+    fn get_layout_status(&self) -> LayoutStatus {
+        LayoutStatus{
+            valves: self.toggle_valves.iter().map(|tv| {
+                let valve = tv.lock().unwrap();
+                let valve_pin_number = ValvePinNumber(valve.valve_pin_number.0);
+                let status = match valve.get_valve_pin().get_value() {
+                    Ok(0) => {CLOSED},
+                    Ok(1) => {OPEN},
+                    _ => {
+                        print!("Could not get value for valve pin {}", valve.get_valve_pin_num().0);
+                        CLOSED
+                    },
+                };
+                ToggleValveStatus {
+                    valve_pin_number,
+                    status
+                }
+            }).collect()
         }
     }
 }

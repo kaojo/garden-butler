@@ -48,7 +48,6 @@ pub struct ToggleValveStatus {
 #[cfg(feature = "gpio")]
 pub enum Error {
     GPIO(sysfs_gpio::Error),
-    Unexpected(String),
 }
 
 #[derive(Debug)]
@@ -63,7 +62,6 @@ impl ::std::error::Error for Error {
         {
             match *self {
                 Error::GPIO(ref e) => e.description(),
-                Error::Unexpected(_) => "An Unexpected Error Occurred",
             }
         }
         #[cfg(not(feature = "gpio"))]
@@ -79,7 +77,6 @@ impl ::std::error::Error for Error {
         {
             match *self {
                 Error::GPIO(ref e) => Some(e),
-                _ => None,
             }
         }
         #[cfg(not(feature = "gpio"))]
@@ -97,7 +94,6 @@ impl fmt::Display for Error {
         {
             match *self {
                 Error::GPIO(ref e) => e.fmt(f),
-                Error::Unexpected(ref s) => write!(f, "Unexpected: {}", s),
             }
         }
         #[cfg(not(feature = "gpio"))]
