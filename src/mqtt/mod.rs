@@ -38,7 +38,8 @@ impl MqttSession {
             ))
             .set_ca(cert)
             //.set_connection_method(ConnectionMethod::Tls(cert, None))
-            .set_last_will(get_last_will(config_clone.clone()));
+            .set_last_will(get_last_will(config_clone.clone()))
+            .set_clean_session(false);
         let (client, receiver) = MqttClient::start(mqtt_options).unwrap();
         Arc::new(Mutex::new(MqttSession { client, receiver, config: config_clone }))
     }
