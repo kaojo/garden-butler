@@ -62,106 +62,57 @@ fn main() {
         // command listening
         let (layout_command_sender, layout_command_receiver): (Sender<LayoutCommand>, Receiver<LayoutCommand>) = crossbeam::unbounded();
         let (layout_status_send_sender, layout_status_send_receiver): (Sender<Result<(), ()>>, Receiver<Result<(), ()>>) = crossbeam::unbounded();
-        tokio::spawn(
-            {
-                let (s, r) = crossbeam::unbounded();
-                ctrl_c_channels.push((s.clone(), r.clone()));
 
-                LayoutCommandListener::new(
-                    Arc::clone(&layout),
-                    layout_command_receiver.clone(),
-                    layout_status_send_sender.clone())
-                    .select2(ReceiverFuture::new(r.clone()))
-                    .map(|_| ())
-                    .map_err(|_| ())
-            }
-        );
+        let layout_command_listener = LayoutCommandListener::new(
+            Arc::clone(&layout),
+            layout_command_receiver.clone(),
+            layout_status_send_sender.clone());
+
+        spawn_task(&mut ctrl_c_channels, layout_command_listener);
 
         // listen for physical button presses
+        let button_streams = layout.lock().unwrap().get_button_streams();
         #[cfg(feature = "gpio")]
             {
-                tokio::spawn(
-                    {
-                        let (s, r) = crossbeam::unbounded();
-                        ctrl_c_channels.push((s.clone(), r.clone()));
-                        let button_streams = layout.lock().unwrap().get_button_streams();
-                        button_streams
-                            .select2(ReceiverFuture::new(r.clone()))
-                            .map(|_| ())
-                            .map_err(|_| ())
-                    }
-                );
+                spawn_task(&mut ctrl_c_channels, button_streams);
             }
 
         let mqtt_config = MqttConfig::default();
         let mqtt_session: Arc<Mutex<MqttSession>> = MqttSession::from_config(mqtt_config.clone());
-
         // listen to mqtt messages that span commands
         mqtt_session.lock().unwrap().client
             .subscribe(format!("{}/garden-butler/command/#", &mqtt_config.client_id), QoS::AtLeastOnce)
             .unwrap();
-        tokio::spawn({
-            let command_sender_clone = layout_command_sender.clone();
-            let (s, r) = crossbeam::unbounded();
-            ctrl_c_channels.push((s.clone(), r.clone()));
-            command_listener(&mqtt_session, command_sender_clone)
-                .select2(ReceiverFuture::new(r.clone()))
-                .map(|_| ())
-                .map_err(|_| ())
-        });
+
+        let mqtt_command_listener = command_listener(&mqtt_session, layout_command_sender.clone());
+        spawn_task(&mut ctrl_c_channels, mqtt_command_listener);
 
         // spawn preconfigured automatic watering tasks
         let mut scheduler =
             WateringScheduler::new(WateringScheduleConfigs::default(), layout_command_sender.clone());
+
         scheduler.start().into_iter().for_each(|schedule_future| {
-            let (s, r) = crossbeam::unbounded();
-            ctrl_c_channels.push((s.clone(), r.clone()));
-            tokio::spawn(
-                schedule_future
-                    .select2(ReceiverFuture::new(r.clone()))
-                    .map(|_| ())
-                    .map_err(|_| ()),
-            );
+            spawn_task(&mut ctrl_c_channels, schedule_future);
         });
+
         let watering_scheduler = Arc::new(Mutex::new(scheduler));
 
         // report layout status
-        tokio::spawn({
-            let (s, r) = crossbeam::unbounded();
-            ctrl_c_channels.push((s.clone(), r.clone()));
-
-            PinLayoutStatus::new(
-                Arc::clone(&layout),
-                Arc::clone(&mqtt_session),
-                mqtt_config.clone(),
-                layout_status_send_receiver,
-            )
-                .select2(ReceiverFuture::new(r.clone()))
-                .map(|_| ())
-                .map_err(|_| ())
-        });
+        let pin_layout_status = PinLayoutStatus::new(
+            Arc::clone(&layout),
+            Arc::clone(&mqtt_session),
+            mqtt_config.clone(),
+            layout_status_send_receiver,
+        );
+        spawn_task(&mut ctrl_c_channels, pin_layout_status);
 
         // report automatic watering configuration
-        tokio::spawn({
-            let (s, r) = crossbeam::unbounded();
-            ctrl_c_channels.push((s.clone(), r.clone()));
-
-            WateringScheduleConfigStatus::new(Arc::clone(&watering_scheduler), Arc::clone(&mqtt_session))
-                .select2(ReceiverFuture::new(r.clone()))
-                .map(|_| ())
-                .map_err(|_| ())
-        });
+        let watering_schedule_config_status = WateringScheduleConfigStatus::new(Arc::clone(&watering_scheduler), Arc::clone(&mqtt_session));
+        spawn_task(&mut ctrl_c_channels, watering_schedule_config_status);
 
         // report layout configuration
-        tokio::spawn({
-            let (s, r) = crossbeam::unbounded();
-            ctrl_c_channels.push((s.clone(), r.clone()));
-
-            LayoutConfigStatus::new(&layout_config, Arc::clone(&mqtt_session))
-                .select2(ReceiverFuture::new(r.clone()))
-                .map(|_| ())
-                .map_err(|_| ())
-        });
+        let layout_config_status = LayoutConfigStatus::new(&layout_config, Arc::clone(&mqtt_session));
+        spawn_task(&mut ctrl_c_channels, layout_config_status);
 
         report_online(Arc::clone(&mqtt_session));
 
@@ -175,9 +126,8 @@ fn main() {
                 "ctrl-c received! Sending message to {} futures.",
                 ctrl_c_channels.len()
             );
-            ctrl_c_channels.iter().for_each(|sender| {
-                sender
-                    .0
+            ctrl_c_channels.iter().for_each(|ctrl_c_channel| {
+                ctrl_c_channel.0
                     .send("ctrl-c received!".to_string())
                     .map_err(|e| println!("send error = {}", e.0))
                     .unwrap_or_default();
@@ -187,6 +137,20 @@ fn main() {
         prog
     }));
     println!("Exiting garden buttler ...");
+}
+
+fn spawn_task(ctrl_c_channels: &mut Vec<(Sender<String>, Receiver<String>)>, layout_command_listener: impl Future<Item=(), Error=()> + Sized + Send + 'static) {
+    tokio::spawn(
+        {
+            let (s, r) = crossbeam::unbounded();
+            ctrl_c_channels.push((s.clone(), r.clone()));
+
+            layout_command_listener
+                .select2(ReceiverFuture::new(r.clone()))
+                .map(|_| ())
+                .map_err(|_| ())
+        }
+    );
 }
 
 fn report_online(mqtt_session: Arc<Mutex<MqttSession>>) {
