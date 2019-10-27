@@ -1,37 +1,30 @@
 use std::collections::HashMap;
-use std::ops::Add;
-use std::str::FromStr;
 use std::time::Duration;
 
-use chrono::Local;
-use cron::Schedule;
+use chrono::{Local, NaiveTime, Utc, Timelike};
 use crossbeam::Sender;
 use futures::{Future, Stream};
-use tokio_chrono::CronInterval;
-use tokio_timer::clock::now;
-use tokio_timer::Delay;
+use tokio_timer::{Interval};
 
 use communication::ReceiverFuture;
-use embedded::ValvePinNumber;
 use embedded::command::LayoutCommand;
+use embedded::ValvePinNumber;
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
+use schedule::ScheduleConfig;
 
 pub struct WateringScheduler {
     configs: WateringScheduleConfigs,
     senders: HashMap<ValvePinNumber, crossbeam::Sender<()>>,
     command_sender: Sender<LayoutCommand>,
-    pub enabled: bool,
 }
 
 impl WateringScheduler {
     pub fn new(configs: WateringScheduleConfigs, command_sender: Sender<LayoutCommand>) -> WateringScheduler {
         let senders = HashMap::new();
-        let enabled = configs.enabled.unwrap_or(true);
         WateringScheduler {
             senders,
             command_sender,
             configs,
-            enabled,
         }
     }
 
@@ -54,13 +47,15 @@ impl WateringScheduler {
     pub fn start(&mut self) -> Vec<impl Future<Item=(), Error=()> + Send> {
         let mut schedules = Vec::new();
         for config in self.configs.get_schedules().iter() {
-            println!(
-                "Creating watering schedule for valve {}",
-                config.get_valve()
-            );
-            if let Ok(result) = create_schedule(&mut self.senders, &self.command_sender, config)
-            {
-                schedules.push(result);
+            if config.is_enabled() {
+                println!(
+                    "Creating watering schedule for valve {}",
+                    config.get_valve()
+                );
+                if let Ok(result) = create_schedule(&mut self.senders, &self.command_sender, config)
+                {
+                    schedules.push(result);
+                }
             }
         }
         schedules
@@ -77,11 +72,15 @@ fn create_schedule(
     let (sender, receiver) = crossbeam::unbounded();
     senders.insert(ValvePinNumber(valve_pin_num), sender);
 
-    let watering_duration = *schedule_config.get_schedule().get_duration_seconds();
-    let cron_expression = schedule_config.get_schedule().get_cron_expression();
-    let cron = Schedule::from_str(cron_expression).map_err(|err| println!("{:?}", err))?;
+    let start_time: NaiveTime = get_schedule_start_time(schedule_config.get_schedule());
+    let end_time = get_schedule_end_time(schedule_config.get_schedule());
     let command_sender_clone = command_sender.clone();
-    let task = CronInterval::new(cron)
+    let task = Interval::new_interval(Duration::from_secs(1))
+        .filter(move|_| {
+            let now = Utc::now().time();
+            let truncated_now = NaiveTime::from_hms(now.hour(), now.minute(), now.second());
+            return truncated_now.eq(&start_time);
+        })
         .map_err(|_| ())
         .for_each(move |_| {
             println!(
@@ -91,9 +90,15 @@ fn create_schedule(
             );
             let turn_on_send_result = command_sender_clone.send(LayoutCommand::Open(ValvePinNumber(valve_pin_num)));
             let command_sender_clone_clone = command_sender_clone.clone();
-            let turn_off = Delay::new(now().add(Duration::from_secs(watering_duration)))
-                .map_err(|e| println!("turn off stream error = {:?}", e))
-                .and_then(move |_| {
+            let turn_off = Interval::new_interval(Duration::from_secs(1))
+                .map_err(|e| println!("error = {}", e))
+                .filter(move |_| {
+                    let now = Utc::now().time();
+                    let truncated_now = NaiveTime::from_hms(now.hour(), now.minute(), now.second());
+                    return truncated_now.eq(&end_time);
+                })
+                .take(1)
+                .for_each(move |_| {
                     println!(
                         "{}: Send close command for valve {}.",
                         Local::now().format("%Y-%m-%d][%H:%M:%S"),
@@ -115,8 +120,16 @@ fn create_schedule(
             }
             Ok(())
         })
-        .select2(ReceiverFuture::new(receiver)) // TODO test shutoff
+        .select2(ReceiverFuture::new(receiver)) // TODO test shutoffsenders
         .map(|_| ())
         .map_err(|_| ());
     Ok(task)
+}
+
+fn get_schedule_start_time(config: &ScheduleConfig) -> NaiveTime {
+    NaiveTime::from_hms(*config.get_start_hour() as u32, *config.get_start_minute() as u32, 0)
+}
+
+fn get_schedule_end_time(config: &ScheduleConfig) -> NaiveTime {
+    NaiveTime::from_hms(*config.get_end_hour() as u32, *config.get_end_minute() as u32, 0)
 }

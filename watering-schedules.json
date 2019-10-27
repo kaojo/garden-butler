@@ -1,18 +1,23 @@
 {
-  "enabled": false,
-  "schedules" : [
+  "schedules": [
     {
       "valve": 10,
+      "enabled": true,
       "schedule": {
-        "cron_expression" : "5 * * * * *",
-        "duration_seconds" : 10
+        "start_hour": 20,
+        "start_minute": 32,
+        "end_hour": 20,
+        "end_minute": 33
       }
     },
     {
       "valve": 27,
+      "enabled": true,
       "schedule": {
-        "cron_expression" : "15/30 * * * * *",
-        "duration_seconds" : 1
+        "start_hour": 20,
+        "start_minute": 29,
+        "end_hour": 11,
+        "end_minute": 15
       }
     }
   ]

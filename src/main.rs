@@ -1,7 +1,6 @@
 extern crate chrono;
 extern crate config;
 extern crate core;
-extern crate cron;
 extern crate crossbeam;
 #[macro_use]
 extern crate futures;
@@ -14,7 +13,6 @@ extern crate serde_json;
 extern crate sysfs_gpio;
 extern crate tokio;
 extern crate tokio_channel;
-extern crate tokio_chrono;
 extern crate tokio_signal;
 extern crate tokio_timer;
 
@@ -115,18 +113,16 @@ fn main() {
         // spawn preconfigured automatic watering tasks
         let mut scheduler =
             WateringScheduler::new(WateringScheduleConfigs::default(), layout_command_sender.clone());
-        if scheduler.enabled {
-            scheduler.start().into_iter().for_each(|schedule_future| {
-                let (s, r) = crossbeam::unbounded();
-                ctrl_c_channels.push((s.clone(), r.clone()));
-                tokio::spawn(
-                    schedule_future
-                        .select2(ReceiverFuture::new(r.clone()))
-                        .map(|_| ())
-                        .map_err(|_| ()),
-                );
-            });
-        }
+        scheduler.start().into_iter().for_each(|schedule_future| {
+            let (s, r) = crossbeam::unbounded();
+            ctrl_c_channels.push((s.clone(), r.clone()));
+            tokio::spawn(
+                schedule_future
+                    .select2(ReceiverFuture::new(r.clone()))
+                    .map(|_| ())
+                    .map_err(|_| ()),
+            );
+        });
         let watering_scheduler = Arc::new(Mutex::new(scheduler));
 
         // report layout status
@@ -138,7 +134,7 @@ fn main() {
                 Arc::clone(&layout),
                 Arc::clone(&mqtt_session),
                 mqtt_config.clone(),
-                layout_status_send_receiver
+                layout_status_send_receiver,
             )
                 .select2(ReceiverFuture::new(r.clone()))
                 .map(|_| ())
