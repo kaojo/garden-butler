@@ -1,9 +1,8 @@
 use std::sync::{Arc, Mutex};
 
+use embedded::{Error, LayoutStatus, PinLayout, ToggleValve, ToggleValveStatus, ValvePinNumber, ValveStatus};
 use embedded::configuration::{LayoutConfig, ValveConfig};
 use embedded::ValveStatus::{CLOSED, OPEN};
-use embedded::{Error, PinLayout, ToggleValve, ValvePinNumber, ValveStatus, LayoutStatus, ToggleValveStatus};
-use embedded::command::LayoutCommand::Open;
 
 pub struct FakePinLayout {
     toggle_valves: Vec<Arc<Mutex<FakeToggleValve>>>,

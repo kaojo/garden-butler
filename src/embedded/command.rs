@@ -14,7 +14,7 @@ pub enum LayoutCommand {
 
 pub struct LayoutCommandListener
 {
-    inner: Box<Future<Item=(), Error=()> + Send>,
+    inner: Box<dyn Future<Item=(), Error=()> + Send>,
 }
 
 impl LayoutCommandListener {

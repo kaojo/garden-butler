@@ -14,7 +14,7 @@ use mqtt::MqttSession;
 use schedule::WateringScheduler;
 
 pub struct PinLayoutStatus {
-    inner: Box<Future<Item=(), Error=()> + Send>,
+    inner: Box<dyn Future<Item=(), Error=()> + Send>,
 }
 
 impl PinLayoutStatus {
@@ -65,7 +65,7 @@ impl Future for PinLayoutStatus {
 }
 
 pub struct WateringScheduleConfigStatus {
-    inner: Box<Future<Item=(), Error=()> + Send>,
+    inner: Box<dyn Future<Item=(), Error=()> + Send>,
 }
 
 impl WateringScheduleConfigStatus {
@@ -103,7 +103,7 @@ impl Future for WateringScheduleConfigStatus {
 
 
 pub struct LayoutConfigStatus {
-    inner: Box<Future<Item=(), Error=()> + Send>,
+    inner: Box<dyn Future<Item=(), Error=()> + Send>,
 }
 
 

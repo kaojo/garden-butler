@@ -1,10 +1,8 @@
 use std::collections::HashMap;
-use std::time::Duration;
 
-use chrono::{Local, NaiveTime, Utc, Timelike};
+use chrono::{NaiveTime};
 use crossbeam::Sender;
-use futures::{Future, Stream};
-use tokio_timer::{Interval};
+use futures::{Future};
 
 use communication::ReceiverFuture;
 use embedded::command::LayoutCommand;

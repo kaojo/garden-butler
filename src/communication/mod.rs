@@ -4,7 +4,7 @@ use futures::{future, Future, Stream};
 use tokio::prelude::Async;
 
 pub struct ReceiverFuture {
-    pub inner: Box<Future<Item=(), Error=()> + Send>,
+    pub inner: Box<dyn Future<Item=(), Error=()> + Send>,
 }
 
 impl ReceiverFuture {
@@ -44,7 +44,7 @@ impl Future for ReceiverFuture {
 }
 
 pub struct ReceiverStream {
-    inner: Box<Stream<Item=(), Error=()> + Send>
+    inner: Box<dyn Stream<Item=(), Error=()> + Send>
 }
 
 impl ReceiverStream {

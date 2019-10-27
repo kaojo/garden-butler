@@ -71,9 +71,9 @@ fn main() {
         spawn_task(&mut ctrl_c_channels, layout_command_listener);
 
         // listen for physical button presses
-        let button_streams = layout.lock().unwrap().get_button_streams();
         #[cfg(feature = "gpio")]
             {
+                let button_streams = layout.lock().unwrap().get_button_streams();
                 spawn_task(&mut ctrl_c_channels, button_streams);
             }
 
