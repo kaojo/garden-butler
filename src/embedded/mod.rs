@@ -11,7 +11,7 @@ pub mod fake;
 #[cfg(feature = "gpio")]
 pub mod gpio;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub struct ValvePinNumber(pub u8);
 
 pub trait PinLayout<T> {

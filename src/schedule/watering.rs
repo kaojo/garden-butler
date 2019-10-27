@@ -11,6 +11,7 @@ use embedded::command::LayoutCommand;
 use embedded::ValvePinNumber;
 use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
 use schedule::ScheduleConfig;
+use schedule::watering_task::WateringTask;
 
 pub struct WateringScheduler {
     configs: WateringScheduleConfigs,
@@ -46,13 +47,13 @@ impl WateringScheduler {
 
     pub fn start(&mut self) -> Vec<impl Future<Item=(), Error=()> + Send> {
         let mut schedules = Vec::new();
-        for config in self.configs.get_schedules().iter() {
-            if config.is_enabled() {
+        for schedule in self.configs.get_schedules().iter() {
+            if schedule.is_enabled() {
                 println!(
                     "Creating watering schedule for valve {}",
-                    config.get_valve()
+                    schedule.get_valve()
                 );
-                if let Ok(result) = create_schedule(&mut self.senders, &self.command_sender, config)
+                if let Ok(result) = create_schedule(&mut self.senders, &self.command_sender, schedule)
                 {
                     schedules.push(result);
                 }
@@ -68,58 +69,19 @@ fn create_schedule(
     schedule_config: &WateringScheduleConfig,
 ) -> Result<impl Future<Item=(), Error=()> + Send, ()> {
     let valve_pin_num = schedule_config.get_valve();
+    let number = ValvePinNumber(valve_pin_num);
+    let schedule = schedule_config.get_schedule();
+
+    let start_time: NaiveTime = get_schedule_start_time(schedule);
+    let end_time = get_schedule_end_time(schedule);
+
+    let start_task = WateringTask::new(LayoutCommand::Open(number), start_time, command_sender.clone());
+    let end_task = WateringTask::new(LayoutCommand::Close(number), end_time, command_sender.clone());
 
     let (sender, receiver) = crossbeam::unbounded();
-    senders.insert(ValvePinNumber(valve_pin_num), sender);
-
-    let start_time: NaiveTime = get_schedule_start_time(schedule_config.get_schedule());
-    let end_time = get_schedule_end_time(schedule_config.get_schedule());
-    let command_sender_clone = command_sender.clone();
-    let task = Interval::new_interval(Duration::from_secs(1))
-        .filter(move|_| {
-            let now = Utc::now().time();
-            let truncated_now = NaiveTime::from_hms(now.hour(), now.minute(), now.second());
-            return truncated_now.eq(&start_time);
-        })
-        .map_err(|_| ())
-        .for_each(move |_| {
-            println!(
-                "{}: Send open command for valve {}.",
-                Local::now().format("%Y-%m-%d][%H:%M:%S"),
-                valve_pin_num
-            );
-            let turn_on_send_result = command_sender_clone.send(LayoutCommand::Open(ValvePinNumber(valve_pin_num)));
-            let command_sender_clone_clone = command_sender_clone.clone();
-            let turn_off = Interval::new_interval(Duration::from_secs(1))
-                .map_err(|e| println!("error = {}", e))
-                .filter(move |_| {
-                    let now = Utc::now().time();
-                    let truncated_now = NaiveTime::from_hms(now.hour(), now.minute(), now.second());
-                    return truncated_now.eq(&end_time);
-                })
-                .take(1)
-                .for_each(move |_| {
-                    println!(
-                        "{}: Send close command for valve {}.",
-                        Local::now().format("%Y-%m-%d][%H:%M:%S"),
-                        valve_pin_num
-                    );
-                    command_sender_clone_clone.send(LayoutCommand::Close(ValvePinNumber(valve_pin_num)))
-                        .map_err(|e| println!("error = {}", e))
-                });
-            match turn_on_send_result {
-                Ok(_) => {
-                    tokio::spawn(turn_off);
-                }
-                Err(e) => {
-                    return {
-                        println!("error = {}", e);
-                        Err(())
-                    };
-                }
-            }
-            Ok(())
-        })
+    senders.insert(number, sender);
+    let task = start_task
+        .join(end_task)
         .select2(ReceiverFuture::new(receiver)) // TODO test shutoffsenders
         .map(|_| ())
         .map_err(|_| ());

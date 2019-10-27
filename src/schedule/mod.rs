@@ -3,3 +3,4 @@ pub use self::watering::WateringScheduler;
 
 mod configuration;
 mod watering;
+mod watering_task;

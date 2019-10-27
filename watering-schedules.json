@@ -5,17 +5,17 @@
       "enabled": true,
       "schedule": {
         "start_hour": 20,
-        "start_minute": 32,
+        "start_minute": 8,
         "end_hour": 20,
-        "end_minute": 33
+        "end_minute": 9
       }
     },
     {
       "valve": 27,
       "enabled": true,
       "schedule": {
-        "start_hour": 20,
-        "start_minute": 29,
+        "start_hour": 18,
+        "start_minute": 10,
         "end_hour": 11,
         "end_minute": 15
       }

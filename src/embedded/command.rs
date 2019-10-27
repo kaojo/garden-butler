@@ -6,7 +6,7 @@ use futures::{Async, Future, Stream};
 
 use embedded::{PinLayout, ToggleValve, ValvePinNumber};
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum LayoutCommand {
     Open(ValvePinNumber),
     Close(ValvePinNumber),
