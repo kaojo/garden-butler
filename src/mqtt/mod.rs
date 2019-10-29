@@ -56,6 +56,12 @@ impl MqttSession {
     {
         self.client.publish(topic, qos, retained, payload)
     }
+
+    pub fn subscribe<S>(&mut self, topic: S, qos: QoS) ->  Result<(), ClientError>
+        where
+            S: Into<String> {
+        self.client.subscribe(topic, qos)
+    }
 }
 
 fn get_last_will(mqtt_config: MqttConfig) -> LastWill {

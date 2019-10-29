@@ -15,8 +15,17 @@ use mqtt::MqttSession;
 pub fn command_listener(
     session: &Arc<Mutex<MqttSession>>,
     sender: Sender<LayoutCommand>,
-) -> impl Future<Item=(), Error=()> + Send
-{
+) -> impl Future<Item=(), Error=()> + Send {
+
+    // listen to mqtt messages that send commands
+    let mut mqtt_session = session.lock().unwrap();
+    let mqtt_config = &mqtt_session.config;
+    let topic = format!("{}/garden-butler/command/#", &mqtt_config.client_id);
+
+    mqtt_session
+        .subscribe(topic, QoS::AtLeastOnce)
+        .unwrap();
+
     let mqtt_session = Arc::clone(session);
     let mqtt_session_2 = Arc::clone(session);
 
@@ -28,7 +37,6 @@ pub fn command_listener(
                 .unwrap()
                 .receiver
                 .try_recv()
-                .map_err(|_| ())
         })
         .inspect(|n| match n {
             Ok(r) => {

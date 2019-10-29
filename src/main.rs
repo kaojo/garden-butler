@@ -37,11 +37,13 @@ use mqtt::configuration::MqttConfig;
 use mqtt::MqttSession;
 use mqtt::status::{LayoutConfigStatus, PinLayoutStatus, WateringScheduleConfigStatus};
 use schedule::{WateringScheduleConfigs, WateringScheduler};
+use app::App;
 
 mod communication;
 mod embedded;
 mod mqtt;
 mod schedule;
+mod app;
 
 #[cfg(feature = "gpio")]
 pub const LAYOUT_TYPE: PhantomData<GpioPinLayout> = PhantomData;
@@ -79,10 +81,6 @@ fn main() {
 
         let mqtt_config = MqttConfig::default();
         let mqtt_session: Arc<Mutex<MqttSession>> = MqttSession::from_config(mqtt_config.clone());
-        // listen to mqtt messages that span commands
-        mqtt_session.lock().unwrap().client
-            .subscribe(format!("{}/garden-butler/command/#", &mqtt_config.client_id), QoS::AtLeastOnce)
-            .unwrap();
 
         let mqtt_command_listener = command_listener(&mqtt_session, layout_command_sender.clone());
         spawn_task(&mut ctrl_c_channels, mqtt_command_listener);
@@ -116,25 +114,7 @@ fn main() {
 
         report_online(Arc::clone(&mqtt_session));
 
-        // listen for program termination
-        let ctrl_c = tokio_signal::ctrl_c()
-            .flatten_stream()
-            .take(1)
-            .map_err(|e| println!("ctrlc-error = {:?}", e));
-        let prog = ctrl_c.for_each(move |_| {
-            println!(
-                "ctrl-c received! Sending message to {} futures.",
-                ctrl_c_channels.len()
-            );
-            ctrl_c_channels.iter().for_each(|ctrl_c_channel| {
-                ctrl_c_channel.0
-                    .send("ctrl-c received!".to_string())
-                    .map_err(|e| println!("send error = {}", e.0))
-                    .unwrap_or_default();
-            });
-            Ok(())
-        });
-        prog
+        App::new(ctrl_c_channels)
     }));
     println!("Exiting garden buttler ...");
 }
