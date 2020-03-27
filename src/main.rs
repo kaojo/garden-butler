@@ -19,7 +19,7 @@ extern crate tokio_timer;
 use std::sync::{Arc, Mutex};
 
 use crossbeam::{Receiver, Sender};
-use futures::{Future, Stream};
+use futures::{Future};
 use futures::future::lazy;
 use rumqtt::QoS;
 use serde::export::PhantomData;
@@ -32,7 +32,7 @@ use embedded::configuration::LayoutConfig;
 use embedded::fake::FakePinLayout;
 #[cfg(feature = "gpio")]
 use embedded::gpio::GpioPinLayout;
-use mqtt::command::command_listener;
+use mqtt::command::{MqttCommandListener};
 use mqtt::configuration::MqttConfig;
 use mqtt::MqttSession;
 use mqtt::status::{LayoutConfigStatus, PinLayoutStatus, WateringScheduleConfigStatus};
@@ -82,7 +82,7 @@ fn main() {
         let mqtt_config = MqttConfig::default();
         let mqtt_session: Arc<Mutex<MqttSession>> = MqttSession::from_config(mqtt_config.clone());
 
-        let mqtt_command_listener = command_listener(&mqtt_session, layout_command_sender.clone());
+        let mqtt_command_listener = MqttCommandListener::new(Arc::clone(&mqtt_session), layout_command_sender.clone());
         spawn_task(&mut ctrl_c_channels, mqtt_command_listener);
 
         // spawn preconfigured automatic watering tasks
