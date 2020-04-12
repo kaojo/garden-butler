@@ -1,25 +1,30 @@
 use std::collections::HashMap;
 
-use chrono::{NaiveTime};
-use crossbeam::Sender;
-use futures::{Future};
+use chrono::NaiveTime;
+use crossbeam::{Receiver, Sender};
+use futures::prelude::*;
 
-use communication::ReceiverFuture;
-use embedded::command::LayoutCommand;
-use embedded::ValvePinNumber;
-use schedule::configuration::{WateringScheduleConfig, WateringScheduleConfigs};
-use schedule::ScheduleConfig;
-use schedule::watering_task::WateringTask;
+use crate::communication::ReceiverFuture;
+use crate::embedded::command::LayoutCommand;
+use crate::embedded::ValvePinNumber;
+use crate::schedule::configuration::WateringScheduleConfigs;
+use crate::schedule::watering_task::WateringTask;
+use crate::schedule::ScheduleConfig;
+use futures::future::FusedFuture;
+use std::sync::{Arc, Mutex};
 
 pub struct WateringScheduler {
     configs: WateringScheduleConfigs,
-    senders: HashMap<ValvePinNumber, crossbeam::Sender<()>>,
+    senders: Arc<Mutex<HashMap<ValvePinNumber, crossbeam::Sender<()>>>>,
     command_sender: Sender<LayoutCommand>,
 }
 
 impl WateringScheduler {
-    pub fn new(configs: WateringScheduleConfigs, command_sender: Sender<LayoutCommand>) -> WateringScheduler {
-        let senders = HashMap::new();
+    pub fn new(
+        configs: WateringScheduleConfigs,
+        command_sender: Sender<LayoutCommand>,
+    ) -> WateringScheduler {
+        let senders = Arc::new(Mutex::new(HashMap::new()));
         WateringScheduler {
             senders,
             command_sender,
@@ -29,7 +34,7 @@ impl WateringScheduler {
 
     /// TODO test method
     pub fn delete_schedule(&mut self, valve_pin: &ValvePinNumber) -> Result<(), ()> {
-        let sender = self.senders.remove(valve_pin);
+        let sender = self.senders.lock().unwrap().remove(valve_pin);
         match sender {
             None => Err(()),
             Some(s) => {
@@ -43,53 +48,91 @@ impl WateringScheduler {
         &self.configs
     }
 
-    pub fn start(&mut self) -> Vec<impl Future<Item=(), Error=()> + Send> {
-        let mut schedules = Vec::new();
+    pub fn start(&mut self) -> Vec<(Sender<String>, Receiver<String>)> {
+        let mut ctrl_c_channels = Vec::new();
         for schedule in self.configs.get_schedules().iter() {
             if schedule.is_enabled() {
                 println!(
                     "Creating watering schedule for valve {}",
                     schedule.get_valve()
                 );
-                if let Ok(result) = create_schedule(&mut self.senders, &self.command_sender, schedule)
-                {
-                    schedules.push(result);
-                }
+                let schedule_task = create_schedule(
+                    self.senders.clone(),
+                    self.command_sender.clone(),
+                    schedule.get_valve().clone(),
+                    schedule.get_schedule().clone(),
+                )
+                .boxed()
+                .fuse();
+
+                let (s, r) = crossbeam::unbounded();
+                ctrl_c_channels.push((s.clone(), r.clone()));
+
+                tokio::task::spawn(create_abortable_task(schedule_task, r));
             }
         }
-        schedules
+        ctrl_c_channels
     }
 }
 
-fn create_schedule(
-    senders: &mut HashMap<ValvePinNumber, crossbeam::Sender<()>>,
-    command_sender: &Sender<LayoutCommand>,
-    schedule_config: &WateringScheduleConfig,
-) -> Result<impl Future<Item=(), Error=()> + Send, ()> {
-    let valve_pin_num = schedule_config.get_valve();
+pub async fn create_abortable_task(
+    mut task: impl Future<Output = ()> + Sized + Send + FusedFuture + Unpin,
+    r: Receiver<String>,
+) {
+    let mut receiver = ReceiverFuture::new(r.clone()).fuse();
+    select! {
+                     _ = task => {},
+                    _ = receiver => {},
+    };
+}
+
+async fn create_schedule(
+    senders: Arc<Mutex<HashMap<ValvePinNumber, crossbeam::Sender<()>>>>,
+    command_sender: Sender<LayoutCommand>,
+    valve_pin_num: u8,
+    schedule_config: ScheduleConfig,
+) -> () {
     let number = ValvePinNumber(valve_pin_num);
-    let schedule = schedule_config.get_schedule();
 
-    let start_time: NaiveTime = get_schedule_start_time(schedule);
-    let end_time = get_schedule_end_time(schedule);
+    let start_time: NaiveTime = get_schedule_start_time(&schedule_config);
+    let end_time = get_schedule_end_time(&schedule_config);
 
-    let start_task = WateringTask::new(LayoutCommand::Open(number), start_time, command_sender.clone());
-    let end_task = WateringTask::new(LayoutCommand::Close(number), end_time, command_sender.clone());
+    let mut start_task = WateringTask::new(
+        LayoutCommand::Open(number),
+        start_time,
+        command_sender.clone(),
+    )
+    .fuse();
+    let mut end_task = WateringTask::new(
+        LayoutCommand::Close(number),
+        end_time,
+        command_sender.clone(),
+    )
+    .fuse();
 
     let (sender, receiver) = crossbeam::unbounded();
-    senders.insert(number, sender);
-    let task = start_task
-        .join(end_task)
-        .select2(ReceiverFuture::new(receiver)) // TODO test shutoffsenders
-        .map(|_| ())
-        .map_err(|_| ());
-    Ok(task)
+    senders.lock().unwrap().insert(number, sender);
+    let mut shut_off = ReceiverFuture::new(receiver).fuse();
+    let task = select! {
+        _ = start_task => {},
+        _ = end_task => {},
+        _ = shut_off => {}, // TODO test shutoffsenders
+    };
+    task
 }
 
 fn get_schedule_start_time(config: &ScheduleConfig) -> NaiveTime {
-    NaiveTime::from_hms(*config.get_start_hour() as u32, *config.get_start_minute() as u32, 0)
+    NaiveTime::from_hms(
+        *config.get_start_hour() as u32,
+        *config.get_start_minute() as u32,
+        0,
+    )
 }
 
 fn get_schedule_end_time(config: &ScheduleConfig) -> NaiveTime {
-    NaiveTime::from_hms(*config.get_end_hour() as u32, *config.get_end_minute() as u32, 0)
+    NaiveTime::from_hms(
+        *config.get_end_hour() as u32,
+        *config.get_end_minute() as u32,
+        0,
+    )
 }

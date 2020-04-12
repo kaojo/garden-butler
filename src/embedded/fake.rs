@@ -1,8 +1,10 @@
 use std::sync::{Arc, Mutex};
 
-use embedded::{Error, LayoutStatus, PinLayout, ToggleValve, ToggleValveStatus, ValvePinNumber, ValveStatus};
-use embedded::configuration::{LayoutConfig, ValveConfig};
-use embedded::ValveStatus::{CLOSED, OPEN};
+use crate::embedded::configuration::{LayoutConfig, ValveConfig};
+use crate::embedded::ValveStatus::{CLOSED, OPEN};
+use crate::embedded::{
+    Error, LayoutStatus, PinLayout, ToggleValve, ToggleValveStatus, ValvePinNumber, ValveStatus,
+};
 
 pub struct FakePinLayout {
     toggle_valves: Vec<Arc<Mutex<FakeToggleValve>>>,
@@ -37,19 +39,23 @@ impl PinLayout<FakeToggleValve> for FakePinLayout {
     }
 
     fn get_layout_status(&self) -> LayoutStatus {
-        LayoutStatus{
-            valves: self.toggle_valves.iter().map(|tv| {
-                let valve = tv.lock().unwrap();
-                let valve_pin_number = ValvePinNumber(valve.valve_pin_number.0);
-                let status = match valve.status {
-                    OPEN => {OPEN},
-                    CLOSED => {CLOSED},
-                };
-                ToggleValveStatus {
-                    valve_pin_number,
-                    status
-                }
-            }).collect()
+        LayoutStatus {
+            valves: self
+                .toggle_valves
+                .iter()
+                .map(|tv| {
+                    let valve = tv.lock().unwrap();
+                    let valve_pin_number = ValvePinNumber(valve.valve_pin_number.0);
+                    let status = match valve.status {
+                        OPEN => OPEN,
+                        CLOSED => CLOSED,
+                    };
+                    ToggleValveStatus {
+                        valve_pin_number,
+                        status,
+                    }
+                })
+                .collect(),
         }
     }
 }
@@ -89,7 +95,6 @@ impl ToggleValve for FakeToggleValve {
     fn get_valve_pin_num(&self) -> &ValvePinNumber {
         &self.valve_pin_number
     }
-
 }
 
 impl FakeToggleValve {

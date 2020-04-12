@@ -1,18 +1,20 @@
 use std::time::Duration;
 
-use futures::{future, Future, Stream};
-use tokio::prelude::Async;
+use futures::prelude::*;
+use futures::task::{Context, Poll};
+use futures::{FutureExt, StreamExt};
+use std::pin::Pin;
 
 pub struct ReceiverFuture {
-    pub inner: Box<dyn Future<Item=(), Error=()> + Send>,
+    inner: Pin<Box<dyn Future<Output = ()> + Send>>,
 }
 
 impl ReceiverFuture {
     pub fn new<T>(receiver: crossbeam::Receiver<T>) -> ReceiverFuture
-        where
-            T: Sized + Send + 'static,
+    where
+        T: Sized + Send + 'static,
     {
-        let inner = tokio_timer::Interval::new_interval(Duration::from_secs(1))
+        let inner = tokio::time::interval(Duration::from_secs(1))
             .map(move |_| match receiver.try_recv() {
                 Ok(m) => {
                     return Some(m);
@@ -22,36 +24,33 @@ impl ReceiverFuture {
                 }
             })
             .take_while(|m| match m {
-                None => future::ok(true),
-                Some(_) => future::ok(false),
+                None => future::ready(true),
+                Some(_) => future::ready(false),
             })
-            .for_each(|_| Ok(()))
-            .map_err(|_| ());
-        ReceiverFuture {
-            inner: Box::new(inner),
-        }
+            .for_each(|_| future::ready(()))
+            .boxed();
+        ReceiverFuture { inner }
     }
 }
 
 impl Future for ReceiverFuture {
-    type Item = ();
-    type Error = ();
+    type Output = ();
 
-    fn poll(&mut self) -> Result<Async<Self::Item>, Self::Error> {
-        let value = try_ready!(self.inner.poll());
-        Ok(Async::Ready(value))
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.inner.poll_unpin(cx)
     }
 }
 
 pub struct ReceiverStream {
-    inner: Box<dyn Stream<Item=(), Error=()> + Send>
+    inner: Pin<Box<dyn Stream<Item = ()> + Send>>,
 }
 
 impl ReceiverStream {
     pub fn new<T>(receiver: crossbeam::Receiver<T>) -> ReceiverStream
-        where
-            T: Sized + Send + 'static {
-        let inner = tokio_timer::Interval::new_interval(Duration::from_secs(1))
+    where
+        T: Sized + Send + 'static,
+    {
+        let inner = tokio::time::interval(Duration::from_secs(1))
             .map(move |_| match receiver.try_recv() {
                 Ok(_) => {
                     return Some(());
@@ -60,21 +59,17 @@ impl ReceiverStream {
                     return None;
                 }
             })
-            .filter(|o| o.is_some())
+            .filter(|o| future::ready(o.is_some()))
             .map(|o| o.unwrap())
-            .map_err(|_| ());
-        ReceiverStream {
-            inner: Box::new(inner)
-        }
+            .boxed();
+        ReceiverStream { inner }
     }
 }
 
 impl Stream for ReceiverStream {
     type Item = ();
-    type Error = ();
 
-    fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
-        let value = try_ready!(self.inner.poll());
-        Ok(Async::Ready(value))
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.inner.poll_next_unpin(cx)
     }
 }

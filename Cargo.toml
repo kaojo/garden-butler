@@ -2,6 +2,7 @@
 name = "garden-buttler"
 version = "0.1.0"
 authors = ["kaojo"]
+edition = '2018'
 
 [features]
 gpio = ["sysfs_gpio"]
@@ -9,16 +10,14 @@ gpio = ["sysfs_gpio"]
 default = ["gpio"]
 
 [dependencies]
-sysfs_gpio = { version = "0.5.4", features = ["use_tokio"], optional = true }
+sysfs_gpio = { git="https://github.com/benjumanji/rust-sysfs-gpio.git", branch="new-futures",  features = ["use_tokio"], optional = true }
 serde = { version = "1.0", features = ["rc"] }
 serde_json = { version = "1.0" }
 serde_derive = { version = "1.0", features = ["deserialize_in_place"] }
-futures = "0.1"
-tokio = "0.1"
-tokio-timer = "0.2"
-tokio-channel = "0.1"
-tokio-signal = { version = "0.2" }
+futures = "0.3"
+tokio = {version = "0.2", features = ["full", "signal", "sync", "time"]}
 config = {version = "0.9", features = ["json"]}
 chrono = { version = "0.4", features = ["serde"] }
 rumqtt = "0.31"
 crossbeam = "0.7"
+iovec = "0.1.4"

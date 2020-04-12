@@ -2,9 +2,11 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 
-use rumqtt::{ClientError, LastWill, MqttClient, MqttOptions, Notification, QoS, Receiver, SecurityOptions};
+use rumqtt::{
+    ClientError, LastWill, MqttClient, MqttOptions, Notification, QoS, Receiver, SecurityOptions,
+};
 
-use mqtt::configuration::MqttConfig;
+use crate::mqtt::configuration::MqttConfig;
 
 pub mod command;
 pub mod configuration;
@@ -32,34 +34,45 @@ impl MqttSession {
             config.broker_hostname,
             config.port.unwrap_or(8883),
         )
-            .set_security_opts(SecurityOptions::UsernamePassword(
-                config.username.unwrap_or("".to_string()),
-                config.password.unwrap_or("".to_string()),
-            ))
-            .set_ca(cert)
-            //.set_connection_method(ConnectionMethod::Tls(cert, None))
-            .set_last_will(get_last_will(config_clone.clone()))
-            .set_clean_session(false);
+        .set_security_opts(SecurityOptions::UsernamePassword(
+            config.username.unwrap_or("".to_string()),
+            config.password.unwrap_or("".to_string()),
+        ))
+        .set_ca(cert)
+        //.set_connection_method(ConnectionMethod::Tls(cert, None))
+        .set_last_will(get_last_will(config_clone.clone()))
+        .set_clean_session(false);
         let (client, receiver) = MqttClient::start(mqtt_options).unwrap();
-        Arc::new(Mutex::new(MqttSession { client, receiver, config: config_clone }))
+        Arc::new(Mutex::new(MqttSession {
+            client,
+            receiver,
+            config: config_clone,
+        }))
     }
 
     pub fn get_client_id(&self) -> &str {
         &self.config.client_id
     }
 
-    pub fn publish<S, V, B>(&mut self, topic: S, qos: QoS, retained: B, payload: V) -> Result<(), ClientError>
-        where
-            S: Into<String>,
-            V: Into<Vec<u8>>,
-            B: Into<bool>,
+    pub fn publish<S, V, B>(
+        &mut self,
+        topic: S,
+        qos: QoS,
+        retained: B,
+        payload: V,
+    ) -> Result<(), ClientError>
+    where
+        S: Into<String>,
+        V: Into<Vec<u8>>,
+        B: Into<bool>,
     {
         self.client.publish(topic, qos, retained, payload)
     }
 
-    pub fn subscribe<S>(&mut self, topic: S, qos: QoS) ->  Result<(), ClientError>
-        where
-            S: Into<String> {
+    pub fn subscribe<S>(&mut self, topic: S, qos: QoS) -> Result<(), ClientError>
+    where
+        S: Into<String>,
+    {
         self.client.subscribe(topic, qos)
     }
 }

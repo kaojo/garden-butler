@@ -47,7 +47,7 @@ impl WateringScheduleConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ScheduleConfig {
     start_hour: u8,
     start_minute: u8,

@@ -1,7 +1,7 @@
+use crate::embedded::configuration::LayoutConfig;
 #[cfg(feature = "gpio")]
 use core::convert;
 use core::fmt;
-use embedded::configuration::LayoutConfig;
 use std::sync::{Arc, Mutex};
 
 pub mod command;
@@ -54,38 +54,6 @@ pub enum Error {
 #[cfg(not(feature = "gpio"))]
 pub enum Error {
     Unexpected(String),
-}
-
-impl ::std::error::Error for Error {
-    fn description(&self) -> &str {
-        #[cfg(feature = "gpio")]
-        {
-            match *self {
-                Error::GPIO(ref e) => e.description(),
-            }
-        }
-        #[cfg(not(feature = "gpio"))]
-        {
-            match *self {
-                Error::Unexpected(_) => "An Unexpected Error Occurred",
-            }
-        }
-    }
-
-    fn cause(&self) -> Option<& dyn (::std::error::Error)> {
-        #[cfg(feature = "gpio")]
-        {
-            match *self {
-                Error::GPIO(ref e) => Some(e),
-            }
-        }
-        #[cfg(not(feature = "gpio"))]
-        {
-            match *self {
-                _ => None,
-            }
-        }
-    }
 }
 
 impl fmt::Display for Error {

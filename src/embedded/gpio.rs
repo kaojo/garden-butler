@@ -2,11 +2,17 @@ use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::Duration;
 
-use embedded::configuration::{LayoutConfig, ValveConfig};
-use embedded::{Error, PinLayout, ToggleValve, ValvePinNumber, LayoutStatus, ToggleValveStatus};
-use futures::{lazy, Future, Stream};
+use crossbeam::{Receiver, Sender};
+use futures::prelude::*;
 use sysfs_gpio::{Direction, Edge, Pin};
-use embedded::ValveStatus::{CLOSED, OPEN};
+
+use crate::communication::ReceiverFuture;
+use crate::embedded::configuration::{LayoutConfig, ValveConfig};
+use crate::embedded::ValveStatus::{CLOSED, OPEN};
+use crate::embedded::{
+    Error, LayoutStatus, PinLayout, ToggleValve, ToggleValveStatus, ValvePinNumber,
+};
+use futures::future::FusedFuture;
 
 pub struct GpioPinLayout {
     power_pin: Option<Pin>,
@@ -52,23 +58,30 @@ impl PinLayout<GpioToggleValve> for GpioPinLayout {
     }
 
     fn get_layout_status(&self) -> LayoutStatus {
-        LayoutStatus{
-            valves: self.toggle_valves.iter().map(|tv| {
-                let valve = tv.lock().unwrap();
-                let valve_pin_number = ValvePinNumber(valve.valve_pin_number.0);
-                let status = match valve.get_valve_pin().get_value() {
-                    Ok(0) => {CLOSED},
-                    Ok(1) => {OPEN},
-                    _ => {
-                        print!("Could not get value for valve pin {}", valve.get_valve_pin_num().0);
-                        CLOSED
-                    },
-                };
-                ToggleValveStatus {
-                    valve_pin_number,
-                    status
-                }
-            }).collect()
+        LayoutStatus {
+            valves: self
+                .toggle_valves
+                .iter()
+                .map(|tv| {
+                    let valve = tv.lock().unwrap();
+                    let valve_pin_number = ValvePinNumber(valve.valve_pin_number.0);
+                    let status = match valve.get_valve_pin().get_value() {
+                        Ok(0) => CLOSED,
+                        Ok(1) => OPEN,
+                        _ => {
+                            print!(
+                                "Could not get value for valve pin {}",
+                                valve.get_valve_pin_num().0
+                            );
+                            CLOSED
+                        }
+                    };
+                    ToggleValveStatus {
+                        valve_pin_number,
+                        status,
+                    }
+                })
+                .collect(),
         }
     }
 }
@@ -111,32 +124,39 @@ impl GpioPinLayout {
         Ok(())
     }
 
-    pub fn get_button_streams(&self) -> impl Future<Item = (), Error = ()> {
+    pub fn spawn_button_streams(
+        &self,
+        ctrl_c_channels: Arc<Mutex<Vec<(Sender<String>, Receiver<String>)>>>,
+    ) -> () {
         let valve_pins = self.get_valve_pins();
         let mut valves: Vec<Arc<Mutex<GpioToggleValve>>> = Vec::new();
         for pin in valve_pins {
             valves.push(Arc::clone(&pin))
         }
-        return lazy(move || {
+        return {
             for toggle_valve in valves {
                 let toggle_valve_raw = toggle_valve.lock().unwrap();
                 if let Some(button_pin) = toggle_valve_raw.get_button_pin() {
                     let clone = Arc::clone(&toggle_valve);
-                    tokio::spawn(
-                        button_pin
-                            .get_value_stream()
-                            .expect("Expect a valid value stream.")
-                            .map_err(|err| Error::from(err))
-                            .for_each(move |_val| {
-                                let mut clone_raw = clone.lock().unwrap();
-                                clone_raw.toggle()
-                            })
-                            .map_err(|err| println!("button stream error = {:?}", err)),
-                    );
+                    let button_stream = button_pin
+                        .get_value_stream()
+                        .expect("Expect a valid value stream.")
+                        .map_err(|err| Error::from(err))
+                        .for_each(move |_val| {
+                            let mut clone_raw = clone.lock().unwrap();
+                            clone_raw.toggle().expect("button stream error");
+                            future::ready(())
+                        })
+                        .boxed()
+                        .fuse();
+
+                    let (s, r) = crossbeam::unbounded();
+                    ctrl_c_channels.lock().unwrap().push((s.clone(), r.clone()));
+                    let task = create_abortable_task(button_stream, r);
+                    tokio::spawn(task);
                 }
             }
-            Ok(())
-        });
+        };
     }
 
     pub fn get_valve_pins(&self) -> &Vec<Arc<Mutex<GpioToggleValve>>> {
@@ -253,4 +273,15 @@ fn set_pin_value(pin: &Option<Pin>, value: u8) {
             .expect("GPIO Pin is not working. Could not set value."),
         _ => (),
     }
+}
+
+pub async fn create_abortable_task(
+    mut task: impl Future<Output = ()> + Sized + Send + FusedFuture + Unpin,
+    r: Receiver<String>,
+) {
+    let mut receiver = ReceiverFuture::new(r.clone()).fuse();
+    select! {
+                     _ = task => {},
+                    _ = receiver => {},
+    };
 }
