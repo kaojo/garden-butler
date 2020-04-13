@@ -68,7 +68,8 @@ impl MqttCommandListener {
                         let topic = guard.config.client_id.clone() + "/garden-butler/status/health";
                         guard
                             .publish(topic, QoS::ExactlyOnce, true, "ONLINE")
-                            .map_err(|e| println!("error = {}", e));
+                            .map_err(|e| println!("error = {}", e))
+                            .unwrap_or(());
                     }
                     _ => {}
                 }

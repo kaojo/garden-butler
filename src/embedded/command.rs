@@ -44,20 +44,26 @@ impl LayoutCommandListener {
                 match command {
                     LayoutCommand::Open(pin_num) => {
                         if let Ok(valve) = layout.lock().unwrap().find_pin(pin_num) {
-                            valve
+                            if let Err(e) = valve
                                 .lock()
                                 .unwrap()
                                 .turn_on()
-                                .map_err(|e| println!("command execution error = {:?}", e));
+                                .map_err(|e| println!("command execution error = {:?}", e))
+                            {
+                                return future::err(e);
+                            }
                         }
                     }
                     LayoutCommand::Close(pin_num) => {
                         if let Ok(valve) = layout.lock().unwrap().find_pin(pin_num) {
-                            valve
+                            if let Err(e) = valve
                                 .lock()
                                 .unwrap()
                                 .turn_off()
-                                .map_err(|e| println!("command execution error = {:?}", e));
+                                .map_err(|e| println!("command execution error = {:?}", e))
+                            {
+                                return future::err(e);
+                            }
                         }
                     }
                 }

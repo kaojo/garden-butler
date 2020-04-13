@@ -11,7 +11,7 @@ impl App {
         // listen for program termination
         tokio::signal::ctrl_c()
             .map_err(|e| println!("ctrlc-error = {:?}", e))
-            .await;
+            .await?;
         println!(
             "ctrl-c received! Sending message to {} futures.",
             ctrl_c_channels.lock().unwrap().len()
