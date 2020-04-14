@@ -114,7 +114,7 @@ async fn main() -> Result<(), ()> {
             Arc::clone(&layout),
             Arc::clone(&mqtt_session),
             mqtt_config.clone(),
-            layout_status_send_receiver,
+            layout_status_send_receiver.clone(),
         )
         .boxed()
         .fuse()
@@ -141,24 +141,33 @@ async fn main() -> Result<(), ()> {
 
     report_online(Arc::clone(&mqtt_session));
 
-    tokio::spawn(App::start(Arc::clone(&ctrl_c_channels)))
-        .await
-        .unwrap()
+    tokio::spawn(App::start(
+        Arc::clone(&ctrl_c_channels),
+        (layout_status_send_sender, layout_status_send_receiver),
+    ))
+    .await
+    .unwrap()
 }
 
 fn spawn_task(
     ctrl_c_channels: Arc<Mutex<Vec<(Sender<String>, Receiver<String>)>>>,
-    mut task: impl Future<Output = ()> + Sized + Send + FusedFuture + Unpin + 'static,
+    task: impl Future<Output = ()> + Sized + Send + FusedFuture + Unpin + 'static,
 ) {
     let (s, r) = crossbeam::unbounded();
     ctrl_c_channels.lock().unwrap().push((s.clone(), r.clone()));
-    tokio::task::spawn(async move {
-        let mut receiver = ReceiverFuture::new(r.clone()).fuse();
-        select! {
-                         _ = task => {},
-                        _ = receiver => {},
-        }
-    });
+    tokio::task::spawn(create_abortable_task(r, task));
+}
+
+async fn create_abortable_task(
+    r: Receiver<String>,
+    mut task: impl Future<Output = ()> + Sized + Send + FusedFuture + Unpin + 'static,
+) -> () {
+    let mut receiver = ReceiverFuture::new(r.clone()).fuse();
+    let abortable_task = select! {
+                     _ = task => {},
+                    _ = receiver => {},
+    };
+    abortable_task
 }
 
 fn report_online(mqtt_session: Arc<Mutex<MqttSession>>) {
