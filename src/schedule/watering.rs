@@ -10,7 +10,7 @@ use crate::embedded::ValvePinNumber;
 use crate::schedule::configuration::WateringScheduleConfigs;
 use crate::schedule::watering_task::WateringTask;
 use crate::schedule::ScheduleConfig;
-use futures::future::FusedFuture;
+
 use std::sync::{Arc, Mutex};
 
 pub struct WateringScheduler {

@@ -76,7 +76,7 @@ impl MqttCommandListener {
                 future::ready(())
             });
         let inner = listener.boxed();
-        MqttCommandListener { inner: inner }
+        MqttCommandListener { inner }
     }
 }
 

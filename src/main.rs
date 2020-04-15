@@ -17,13 +17,13 @@ use std::sync::{Arc, Mutex};
 
 use crossbeam::{Receiver, Sender};
 use futures::future::FusedFuture;
-use futures::{select, Future, FutureExt};
+use futures::{Future, FutureExt};
 use rumqtt::QoS;
 use serde::export::PhantomData;
 
 use crate::communication::create_abortable_task;
 use app::App;
-use communication::ReceiverFuture;
+
 use embedded::command::{LayoutCommand, LayoutCommandListener};
 use embedded::configuration::LayoutConfig;
 #[cfg(not(feature = "gpio"))]

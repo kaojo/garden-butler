@@ -6,13 +6,12 @@ use crossbeam::{Receiver, Sender};
 use futures::prelude::*;
 use sysfs_gpio::{Direction, Edge, Pin};
 
-use crate::communication::{create_abortable_task, ReceiverFuture};
+use crate::communication::create_abortable_task;
 use crate::embedded::configuration::{LayoutConfig, ValveConfig};
 use crate::embedded::ValveStatus::{CLOSED, OPEN};
 use crate::embedded::{
     Error, LayoutStatus, PinLayout, ToggleValve, ToggleValveStatus, ValvePinNumber,
 };
-use futures::future::FusedFuture;
 
 pub struct GpioPinLayout {
     power_pin: Option<Pin>,

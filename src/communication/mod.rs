@@ -17,13 +17,11 @@ impl ReceiverFuture {
         T: Sized + Send + 'static,
     {
         let inner = tokio::time::interval(Duration::from_secs(1))
-            .map(move |_| match receiver.try_recv() {
-                Ok(m) => {
-                    return Some(m);
-                }
-                Err(_) => {
-                    return None;
-                }
+            .map(move |_| {
+                return match receiver.try_recv() {
+                    Ok(m) => Some(m),
+                    Err(_) => None,
+                };
             })
             .take_while(|m| match m {
                 None => future::ready(true),
@@ -53,13 +51,11 @@ impl ReceiverStream {
         T: Sized + Send + 'static,
     {
         let inner = tokio::time::interval(Duration::from_secs(1))
-            .map(move |_| match receiver.try_recv() {
-                Ok(_) => {
-                    return Some(());
-                }
-                Err(_) => {
-                    return None;
-                }
+            .map(move |_| {
+                return match receiver.try_recv() {
+                    Ok(_) => Some(()),
+                    Err(_) => None,
+                };
             })
             .filter(|o| future::ready(o.is_some()))
             .map(|o| o.unwrap())
