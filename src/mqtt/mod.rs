@@ -30,7 +30,7 @@ impl MqttSession {
             .expect("Could not read cert file");
 
         let mqtt_options = MqttOptions::new(
-            config.client_id,
+            config.client_id.clone(),
             config.broker_hostname,
             config.port.unwrap_or(8883),
         )
@@ -39,8 +39,7 @@ impl MqttSession {
             config.password.unwrap_or("".to_string()),
         ))
         .set_ca(cert)
-        //.set_connection_method(ConnectionMethod::Tls(cert, None))
-        .set_last_will(get_last_will(config_clone.clone()))
+        .set_last_will(device_offline_last_will(config.client_id))
         .set_clean_session(false);
         let (client, receiver) = MqttClient::start(mqtt_options).unwrap();
         Arc::new(Mutex::new(MqttSession {
@@ -77,9 +76,9 @@ impl MqttSession {
     }
 }
 
-fn get_last_will(mqtt_config: MqttConfig) -> LastWill {
+fn device_offline_last_will(client_id: String) -> LastWill {
     LastWill {
-        topic: format!("{}/garden-butler/status/health", &mqtt_config.client_id),
+        topic: format!("{}/garden-butler/status/health", client_id),
         message: String::from("OFFLINE"),
         qos: QoS::AtLeastOnce,
         retain: true,
