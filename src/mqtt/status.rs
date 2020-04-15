@@ -33,9 +33,8 @@ impl PinLayoutStatus {
         let interval = tokio::time::interval(Duration::from_secs(
             mqtt_config.status_publish_interval_secs.unwrap_or(60),
         ))
-        .map(|_| ())
-        .fuse();
-        let receiver = ReceiverStream::new(send_layout_status_receiver).fuse();
+        .map(|_| ());
+        let receiver = ReceiverStream::new(send_layout_status_receiver);
         let interval_or_receiver = stream::select(interval, receiver);
         let inner = interval_or_receiver
             .map(move |_| layout.lock().unwrap().get_layout_status())
@@ -46,7 +45,7 @@ impl PinLayoutStatus {
                     status
                 )
             })
-            .fold(mqtt_session, move |mqtt_session, status| {
+            .for_each(move |status| {
                 let topic = format!("{}/garden-butler/status/layout", mqtt_config.client_id);
                 let message = serde_json::to_string(&status).unwrap();
                 match mqtt_session
@@ -57,9 +56,8 @@ impl PinLayoutStatus {
                     Ok(_) => {}
                     Err(e) => println!("mqtt publish error = {:?}", e),
                 }
-                future::ready(mqtt_session)
+                future::ready(())
             })
-            .map(|_| ())
             .boxed();
 
         PinLayoutStatus { inner }
