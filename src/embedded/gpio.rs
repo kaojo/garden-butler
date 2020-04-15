@@ -6,7 +6,7 @@ use crossbeam::{Receiver, Sender};
 use futures::prelude::*;
 use sysfs_gpio::{Direction, Edge, Pin};
 
-use crate::communication::ReceiverFuture;
+use crate::communication::{create_abortable_task, ReceiverFuture};
 use crate::embedded::configuration::{LayoutConfig, ValveConfig};
 use crate::embedded::ValveStatus::{CLOSED, OPEN};
 use crate::embedded::{
@@ -273,15 +273,4 @@ fn set_pin_value(pin: &Option<Pin>, value: u8) {
             .expect("GPIO Pin is not working. Could not set value."),
         _ => (),
     }
-}
-
-pub async fn create_abortable_task(
-    mut task: impl Future<Output = ()> + Sized + Send + FusedFuture + Unpin,
-    r: Receiver<String>,
-) {
-    let mut receiver = ReceiverFuture::new(r.clone()).fuse();
-    select! {
-                     _ = task => {},
-                    _ = receiver => {},
-    };
 }

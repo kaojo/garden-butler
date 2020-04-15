@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use crossbeam::Receiver;
+use futures::future::FusedFuture;
 use futures::prelude::*;
 use futures::task::{Context, Poll};
 use futures::{FutureExt, StreamExt};
@@ -72,4 +74,15 @@ impl Stream for ReceiverStream {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.inner.poll_next_unpin(cx)
     }
+}
+
+pub async fn create_abortable_task(
+    mut task: impl Future<Output = ()> + Sized + Send + FusedFuture + Unpin,
+    r: Receiver<String>,
+) {
+    let mut receiver = ReceiverFuture::new(r.clone()).fuse();
+    select! {
+                     _ = task => {},
+                    _ = receiver => {},
+    };
 }

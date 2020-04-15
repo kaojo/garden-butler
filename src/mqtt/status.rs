@@ -20,7 +20,7 @@ pub struct PinLayoutStatus {
 }
 
 impl PinLayoutStatus {
-    pub async fn new<T, U>(
+    pub fn new<T, U>(
         layout: Arc<Mutex<T>>,
         mqtt_session: Arc<Mutex<MqttSession>>,
         mqtt_config: MqttConfig,

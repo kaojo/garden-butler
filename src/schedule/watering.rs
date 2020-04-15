@@ -4,7 +4,7 @@ use chrono::NaiveTime;
 use crossbeam::{Receiver, Sender};
 use futures::prelude::*;
 
-use crate::communication::ReceiverFuture;
+use crate::communication::{create_abortable_task, ReceiverFuture};
 use crate::embedded::command::LayoutCommand;
 use crate::embedded::ValvePinNumber;
 use crate::schedule::configuration::WateringScheduleConfigs;
@@ -73,17 +73,6 @@ impl WateringScheduler {
         }
         ctrl_c_channels
     }
-}
-
-pub async fn create_abortable_task(
-    mut task: impl Future<Output = ()> + Sized + Send + FusedFuture + Unpin,
-    r: Receiver<String>,
-) {
-    let mut receiver = ReceiverFuture::new(r.clone()).fuse();
-    select! {
-                     _ = task => {},
-                    _ = receiver => {},
-    };
 }
 
 async fn create_schedule(

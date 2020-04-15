@@ -21,6 +21,7 @@ use futures::{select, Future, FutureExt};
 use rumqtt::QoS;
 use serde::export::PhantomData;
 
+use crate::communication::create_abortable_task;
 use app::App;
 use communication::ReceiverFuture;
 use embedded::command::{LayoutCommand, LayoutCommandListener};
@@ -155,19 +156,7 @@ fn spawn_task(
 ) {
     let (s, r) = crossbeam::unbounded();
     ctrl_c_channels.lock().unwrap().push((s.clone(), r.clone()));
-    tokio::task::spawn(create_abortable_task(r, task));
-}
-
-async fn create_abortable_task(
-    r: Receiver<String>,
-    mut task: impl Future<Output = ()> + Sized + Send + FusedFuture + Unpin + 'static,
-) -> () {
-    let mut receiver = ReceiverFuture::new(r.clone()).fuse();
-    let abortable_task = select! {
-                     _ = task => {},
-                    _ = receiver => {},
-    };
-    abortable_task
+    tokio::task::spawn(create_abortable_task(task, r));
 }
 
 fn report_online(mqtt_session: Arc<Mutex<MqttSession>>) {
