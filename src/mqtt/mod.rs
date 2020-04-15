@@ -21,32 +21,46 @@ pub struct MqttSession {
 impl MqttSession {
     pub fn from_config(config: MqttConfig) -> Arc<Mutex<MqttSession>> {
         let config_clone = config.clone();
-        let mut cert_file = File::open(config.cert_path.unwrap_or("/app/root-ca.crt".to_string()))
-            .expect("Could not open root ca for mqtt connection.");
+
+        let mqtt_options = MqttSession::create_mqtt_options(config_clone);
+
+        let (client, receiver) = MqttClient::start(mqtt_options).unwrap();
+
+        Arc::new(Mutex::new(MqttSession {
+            client,
+            receiver,
+            config,
+        }))
+    }
+
+    fn create_mqtt_options(config_clone: MqttConfig) -> MqttOptions {
+        let cert_path = config_clone
+            .cert_path
+            .unwrap_or("/app/root-ca.crt".to_string());
+        let cert = MqttSession::read_cert(cert_path);
+        MqttOptions::new(
+            config_clone.client_id.clone(),
+            config_clone.broker_hostname,
+            config_clone.port.unwrap_or(8883),
+        )
+        .set_security_opts(SecurityOptions::UsernamePassword(
+            config_clone.username.unwrap_or("".to_string()),
+            config_clone.password.unwrap_or("".to_string()),
+        ))
+        .set_ca(cert)
+        .set_last_will(device_offline_last_will(config_clone.client_id))
+        .set_clean_session(false)
+    }
+
+    fn read_cert(cert_path: String) -> Vec<u8> {
+        let mut cert_file =
+            File::open(cert_path).expect("Could not open root ca for mqtt connection.");
         let mut cert = Vec::new();
         // read the whole file
         cert_file
             .read_to_end(&mut cert)
             .expect("Could not read cert file");
-
-        let mqtt_options = MqttOptions::new(
-            config.client_id.clone(),
-            config.broker_hostname,
-            config.port.unwrap_or(8883),
-        )
-        .set_security_opts(SecurityOptions::UsernamePassword(
-            config.username.unwrap_or("".to_string()),
-            config.password.unwrap_or("".to_string()),
-        ))
-        .set_ca(cert)
-        .set_last_will(device_offline_last_will(config.client_id))
-        .set_clean_session(false);
-        let (client, receiver) = MqttClient::start(mqtt_options).unwrap();
-        Arc::new(Mutex::new(MqttSession {
-            client,
-            receiver,
-            config: config_clone,
-        }))
+        cert
     }
 
     pub fn get_client_id(&self) -> &str {
