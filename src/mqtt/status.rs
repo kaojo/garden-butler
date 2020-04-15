@@ -9,10 +9,11 @@ use rumqtt::QoS;
 
 use crate::communication::ReceiverStream;
 use crate::embedded::configuration::LayoutConfig;
-use crate::embedded::{PinLayout, ToggleValve};
+use crate::embedded::{LayoutStatus, PinLayout, ToggleValve};
 use crate::mqtt::configuration::MqttConfig;
 use crate::mqtt::MqttSession;
 use crate::schedule::WateringScheduler;
+use futures::future::Ready;
 use futures::FutureExt;
 
 pub struct PinLayoutStatus {
@@ -37,30 +38,47 @@ impl PinLayoutStatus {
         let receiver = ReceiverStream::new(send_layout_status_receiver);
         let interval_or_receiver = stream::select(interval, receiver);
         let inner = interval_or_receiver
-            .map(move |_| layout.lock().unwrap().get_layout_status())
-            .inspect(|status| {
-                println!(
-                    "{}: {:?}",
-                    Local::now().format("%Y-%m-%d][%H:%M:%S"),
-                    status
-                )
-            })
+            .map(move |_| PinLayoutStatus::get_current_layout_status(layout))
+            .inspect(|status| PinLayoutStatus::log_status(status))
             .for_each(move |status| {
-                let topic = format!("{}/garden-butler/status/layout", mqtt_config.client_id);
-                let message = serde_json::to_string(&status).unwrap();
-                match mqtt_session
-                    .lock()
-                    .unwrap()
-                    .publish(topic, QoS::AtMostOnce, true, message)
-                {
-                    Ok(_) => {}
-                    Err(e) => println!("mqtt publish error = {:?}", e),
-                }
+                PinLayoutStatus::publish_status(mqtt_session, mqtt_config, &status);
                 future::ready(())
             })
             .boxed();
 
         PinLayoutStatus { inner }
+    }
+
+    fn get_current_layout_status<T>(layout: Arc<Mutex<T>>) -> LayoutStatus
+    where
+        T: PinLayout<U> + Send + 'static,
+    {
+        layout.lock().unwrap().get_layout_status()
+    }
+
+    fn log_status(status: &LayoutStatus) {
+        println!(
+            "{}: {:?}",
+            Local::now().format("%Y-%m-%d][%H:%M:%S"),
+            status
+        )
+    }
+
+    fn publish_status(
+        mqtt_session: Arc<Mutex<MqttSession>>,
+        mqtt_config: MqttConfig,
+        status: &LayoutStatus,
+    ) -> () {
+        let topic = format!("{}/garden-butler/status/layout", mqtt_config.client_id);
+        let message = serde_json::to_string(&status).unwrap();
+        match mqtt_session
+            .lock()
+            .unwrap()
+            .publish(topic, QoS::AtMostOnce, true, message)
+        {
+            Ok(_) => {}
+            Err(e) => println!("mqtt publish error = {:?}", e),
+        }
     }
 }
 
