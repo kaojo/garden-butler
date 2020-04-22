@@ -45,7 +45,7 @@ impl MqttCommandListener {
                         {
                             let s = get_valve_pin_num_from_message(publish);
                             if let Ok(Ok(pin_num)) = s {
-                                match layout_command_sender.send(LayoutCommand::Open(pin_num)) {
+                                match layout_command_sender.try_send(LayoutCommand::Open(pin_num)) {
                                     Ok(_) => {}
                                     Err(e) => println!("error sending open command = {}", e),
                                 }
@@ -56,7 +56,8 @@ impl MqttCommandListener {
                         {
                             let s = get_valve_pin_num_from_message(publish);
                             if let Ok(Ok(pin_num)) = s {
-                                match layout_command_sender.send(LayoutCommand::Close(pin_num)) {
+                                match layout_command_sender.try_send(LayoutCommand::Close(pin_num))
+                                {
                                     Ok(_) => {}
                                     Err(e) => println!("error sending close command = {}", e),
                                 }

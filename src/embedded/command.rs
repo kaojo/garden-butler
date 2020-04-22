@@ -70,7 +70,7 @@ impl LayoutCommandListener {
                 future::ok(())
             })
             .for_each(move |_| {
-                let _ = sender.send(Ok(())).map_err(|e| {
+                let _ = sender.try_send(Ok(())).map_err(|e| {
                     println!("error sending signal for layout status update. = {}", e)
                 });
                 future::ready(())

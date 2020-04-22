@@ -25,8 +25,8 @@ impl App {
             .for_each(|ctrl_c_channel| {
                 let _ = ctrl_c_channel
                     .0
-                    .send("ctrl-c received!".to_string())
-                    .map_err(|e| println!("send error = {}", e.0));
+                    .try_send("ctrl-c received!".to_string())
+                    .map_err(|e| println!("send error = {}", e));
             });
         Ok(())
     }

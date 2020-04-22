@@ -38,7 +38,7 @@ impl WateringScheduler {
         match sender {
             None => Err(()),
             Some(s) => {
-                s.send(()).map_err(|e| println!("error = {:?}", e))?;
+                s.try_send(()).map_err(|e| println!("error = {:?}", e))?;
                 Ok(())
             }
         }

@@ -26,7 +26,7 @@ impl WateringTask {
             })
             .for_each(move |_| {
                 command_sender
-                    .send(layout_command)
+                    .try_send(layout_command)
                     .map_err(|e| println!("error = {}", e))
                     .unwrap_or(());
                 future::ready(())
