@@ -53,8 +53,8 @@ pub const LAYOUT_TYPE: PhantomData<FakePinLayout> = PhantomData;
 async fn main() -> Result<(), ()> {
     println!("Garden buttler starting ...");
 
-    let layout_config = LayoutConfig::default();
-    let layout = create_pin_layout(layout_config.clone(), LAYOUT_TYPE);
+    let layout_config = Arc::new(Mutex::new(LayoutConfig::default()));
+    let layout = create_pin_layout(Arc::clone(&layout_config), LAYOUT_TYPE);
 
     let (ctrl_c_sender, mut ctrl_c_receiver) = watch::channel("hello".to_string());
     let _ = ctrl_c_receiver.recv().await;
@@ -107,7 +107,7 @@ async fn main() -> Result<(), ()> {
 
     // report layout status
     {
-        let pin_layout_status = PinLayoutStatus::new(
+        let pin_layout_status = PinLayoutStatus::report(
             Arc::clone(&layout),
             Arc::clone(&mqtt_session),
             mqtt_config.clone(),
@@ -120,17 +120,18 @@ async fn main() -> Result<(), ()> {
     }
 
     // report automatic watering configuration
-    let watering_schedule_config_status = WateringScheduleConfigStatus::new(
+    let watering_schedule_config_status = WateringScheduleConfigStatus::report(
         Arc::clone(&watering_scheduler),
         Arc::clone(&mqtt_session),
     )
+    .boxed()
     .fuse();
     spawn_task(ctrl_c_receiver.clone(), watering_schedule_config_status);
 
     // report layout configuration
-    let layout_config_status = LayoutConfigStatus::new(&layout_config, Arc::clone(&mqtt_session))
-        .fuse()
-        .map(|_| ());
+    let layout_config_status = LayoutConfigStatus::report(layout_config, Arc::clone(&mqtt_session))
+        .boxed()
+        .fuse();
     spawn_task(ctrl_c_receiver.clone(), layout_config_status);
 
     report_online(Arc::clone(&mqtt_session));
@@ -160,10 +161,10 @@ fn report_online(mqtt_session: Arc<Mutex<MqttSession>>) {
     }
 }
 
-fn create_pin_layout<T, U>(config: LayoutConfig, _: PhantomData<T>) -> Arc<Mutex<T>>
+fn create_pin_layout<T, U>(config: Arc<Mutex<LayoutConfig>>, _: PhantomData<T>) -> Arc<Mutex<T>>
 where
     T: PinLayout<U> + 'static,
     U: ToggleValve + Send + 'static,
 {
-    Arc::new(Mutex::new(T::new(&config)))
+    Arc::new(Mutex::new(T::new(&config.lock().unwrap())))
 }

@@ -1,6 +1,5 @@
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use futures::prelude::*;
 use futures::task::{Context, Poll};
@@ -8,7 +7,6 @@ use futures::FutureExt;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::embedded::{PinLayout, ToggleValve, ValvePinNumber};
-use tokio::sync::mpsc::error::TryRecvError;
 
 #[derive(Debug, Copy, Clone)]
 pub enum LayoutCommand {
@@ -23,7 +21,7 @@ pub struct LayoutCommandListener {
 impl LayoutCommandListener {
     pub fn new<T, U>(
         layout: Arc<Mutex<T>>,
-        mut receiver: Receiver<LayoutCommand>,
+        receiver: Receiver<LayoutCommand>,
         mut layout_status_sender: Sender<Result<(), ()>>,
     ) -> Self
     where
