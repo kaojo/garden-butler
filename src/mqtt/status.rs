@@ -1,12 +1,9 @@
 use core::time::Duration;
 use std::ops::Deref;
-use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use chrono::Local;
 use futures::prelude::*;
-use futures::task::{Context, Poll};
-use futures::FutureExt;
 use rumqtt::QoS;
 
 use crate::embedded::configuration::LayoutConfig;
