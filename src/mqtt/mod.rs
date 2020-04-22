@@ -49,7 +49,7 @@ impl MqttSession {
         ))
         .set_ca(cert)
         .set_last_will(device_offline_last_will(config_clone.client_id))
-        .set_clean_session(false)
+        .set_clean_session(true)
     }
 
     fn read_cert(cert_path: String) -> Vec<u8> {

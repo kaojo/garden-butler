@@ -95,12 +95,11 @@ async fn main() -> Result<(), ()> {
         spawn_task(Arc::clone(&ctrl_c_channels), mqtt_command_listener);
     }
 
-    // spawn preconfigured automatic watering tasks
+    //spawn preconfigured automatic watering tasks
     let mut scheduler = WateringScheduler::new(
         WateringScheduleConfigs::default(),
         layout_command_sender.clone(),
     );
-
     let schedule_channels = scheduler.start();
     let ctrl_c_channels_for_closure = Arc::clone(&ctrl_c_channels);
     schedule_channels.into_iter().for_each(move |channel| {
