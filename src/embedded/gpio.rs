@@ -2,7 +2,6 @@ use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::Duration;
 
-use crossbeam::{Receiver, Sender};
 use futures::prelude::*;
 use sysfs_gpio::{Direction, Edge, Pin};
 
@@ -125,7 +124,7 @@ impl GpioPinLayout {
 
     pub fn spawn_button_streams(
         &self,
-        ctrl_c_channels: Arc<Mutex<Vec<(Sender<String>, Receiver<String>)>>>,
+        ctrl_c_receiver: tokio::sync::watch::Receiver<String>,
     ) -> () {
         let valve_pins = self.get_valve_pins();
         let mut valves: Vec<Arc<Mutex<GpioToggleValve>>> = Vec::new();
@@ -149,9 +148,7 @@ impl GpioPinLayout {
                         .boxed()
                         .fuse();
 
-                    let (s, r) = crossbeam::unbounded();
-                    ctrl_c_channels.lock().unwrap().push((s.clone(), r.clone()));
-                    let task = create_abortable_task(button_stream, r);
+                    let task = create_abortable_task(button_stream, ctrl_c_receiver.clone());
                     tokio::spawn(task);
                 }
             }

@@ -1,13 +1,14 @@
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crossbeam::TryRecvError;
 use futures::prelude::*;
 use futures::task::{Context, Poll};
+use futures::FutureExt;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::embedded::{PinLayout, ToggleValve, ValvePinNumber};
-use futures::FutureExt;
-use std::pin::Pin;
+use tokio::sync::mpsc::error::TryRecvError;
 
 #[derive(Debug, Copy, Clone)]
 pub enum LayoutCommand {
@@ -22,25 +23,16 @@ pub struct LayoutCommandListener {
 impl LayoutCommandListener {
     pub fn new<T, U>(
         layout: Arc<Mutex<T>>,
-        receiver: crossbeam::Receiver<LayoutCommand>,
-        sender: crossbeam::Sender<Result<(), ()>>,
+        mut receiver: Receiver<LayoutCommand>,
+        mut layout_status_sender: Sender<Result<(), ()>>,
     ) -> Self
     where
         T: PinLayout<U> + Send + 'static,
         U: ToggleValve + Send + 'static,
     {
-        let inner = tokio::time::interval(Duration::from_secs(1))
-            .map(move |_| {
-                receiver.try_recv().map_err(|e| match e {
-                    TryRecvError::Empty => {}
-                    TryRecvError::Disconnected => {
-                        println!("error receiving signals for layout command listener= {}", e)
-                    }
-                })
-            })
-            .filter(|r| future::ready(r.is_ok()))
+        let inner = receiver
             .inspect(|n| println!("{:?}", n))
-            .and_then(move |command| {
+            .then(move |command| {
                 match command {
                     LayoutCommand::Open(pin_num) => {
                         if let Ok(valve) = layout.lock().unwrap().find_pin(pin_num) {
@@ -70,7 +62,7 @@ impl LayoutCommandListener {
                 future::ok(())
             })
             .for_each(move |_| {
-                let _ = sender.try_send(Ok(())).map_err(|e| {
+                let _ = layout_status_sender.try_send(Ok(())).map_err(|e| {
                     println!("error sending signal for layout status update. = {}", e)
                 });
                 future::ready(())

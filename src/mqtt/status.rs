@@ -5,15 +5,14 @@ use std::sync::{Arc, Mutex};
 use chrono::Local;
 use futures::prelude::*;
 use futures::task::{Context, Poll};
+use futures::FutureExt;
 use rumqtt::QoS;
 
-use crate::communication::ReceiverStream;
 use crate::embedded::configuration::LayoutConfig;
 use crate::embedded::{LayoutStatus, PinLayout, ToggleValve};
 use crate::mqtt::configuration::MqttConfig;
 use crate::mqtt::MqttSession;
 use crate::schedule::WateringScheduler;
-use futures::FutureExt;
 
 pub struct PinLayoutStatus {
     inner: Pin<Box<dyn Future<Output = ()> + Send>>,
@@ -24,7 +23,7 @@ impl PinLayoutStatus {
         layout: Arc<Mutex<T>>,
         mqtt_session: Arc<Mutex<MqttSession>>,
         mqtt_config: MqttConfig,
-        send_layout_status_receiver: crossbeam::Receiver<Result<(), ()>>,
+        send_layout_status_receiver: tokio::sync::mpsc::Receiver<Result<(), ()>>,
     ) -> Self
     where
         T: PinLayout<U> + Send + 'static,
@@ -34,8 +33,8 @@ impl PinLayoutStatus {
             mqtt_config.status_publish_interval_secs.unwrap_or(60),
         ))
         .map(|_| ());
-        let receiver = ReceiverStream::new(send_layout_status_receiver);
-        let interval_or_receiver = stream::select(interval, receiver);
+        let interval_or_receiver =
+            stream::select(interval, send_layout_status_receiver.map(|_| ()));
         let inner = interval_or_receiver
             .map(move |_| PinLayoutStatus::get_current_layout_status(&layout))
             .inspect(|status| PinLayoutStatus::log_status(status))

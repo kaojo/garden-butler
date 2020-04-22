@@ -1,21 +1,19 @@
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use chrono::NaiveTime;
-use crossbeam::{Receiver, Sender};
 use futures::prelude::*;
+use tokio::sync::mpsc::Sender;
 
-use crate::communication::{create_abortable_task, ReceiverFuture};
 use crate::embedded::command::LayoutCommand;
 use crate::embedded::ValvePinNumber;
 use crate::schedule::configuration::WateringScheduleConfigs;
 use crate::schedule::watering_task::WateringTask;
 use crate::schedule::ScheduleConfig;
 
-use std::sync::{Arc, Mutex};
-
 pub struct WateringScheduler {
     configs: WateringScheduleConfigs,
-    senders: Arc<Mutex<HashMap<ValvePinNumber, crossbeam::Sender<()>>>>,
+    senders: Arc<Mutex<HashMap<ValvePinNumber, Sender<()>>>>,
     command_sender: Sender<LayoutCommand>,
 }
 
@@ -37,7 +35,7 @@ impl WateringScheduler {
         let sender = self.senders.lock().unwrap().remove(valve_pin);
         match sender {
             None => Err(()),
-            Some(s) => {
+            Some(mut s) => {
                 s.try_send(()).map_err(|e| println!("error = {:?}", e))?;
                 Ok(())
             }
@@ -48,8 +46,7 @@ impl WateringScheduler {
         &self.configs
     }
 
-    pub fn start(&mut self) -> Vec<(Sender<String>, Receiver<String>)> {
-        let mut ctrl_c_channels = Vec::new();
+    pub fn start(&mut self, ctrl_c_receiver: tokio::sync::watch::Receiver<String>) -> () {
         for schedule in self.configs.get_schedules().iter() {
             if schedule.is_enabled() {
                 println!(
@@ -61,25 +58,23 @@ impl WateringScheduler {
                     self.command_sender.clone(),
                     schedule.get_valve().clone(),
                     schedule.get_schedule().clone(),
+                    ctrl_c_receiver.clone(),
                 )
                 .boxed()
                 .fuse();
 
-                let (s, r) = crossbeam::unbounded();
-                ctrl_c_channels.push((s.clone(), r.clone()));
-
-                tokio::task::spawn(create_abortable_task(schedule_task, r));
+                tokio::task::spawn(schedule_task);
             }
         }
-        ctrl_c_channels
     }
 }
 
 async fn create_schedule(
-    senders: Arc<Mutex<HashMap<ValvePinNumber, crossbeam::Sender<()>>>>,
+    senders: Arc<Mutex<HashMap<ValvePinNumber, tokio::sync::mpsc::Sender<()>>>>,
     command_sender: Sender<LayoutCommand>,
     valve_pin_num: u8,
     schedule_config: ScheduleConfig,
+    mut ctrl_c_receiver: tokio::sync::watch::Receiver<String>,
 ) -> () {
     let number = ValvePinNumber(valve_pin_num);
 
@@ -99,13 +94,16 @@ async fn create_schedule(
     )
     .fuse();
 
-    let (sender, receiver) = crossbeam::unbounded();
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(16);
     senders.lock().unwrap().insert(number, sender);
-    let mut shut_off = ReceiverFuture::new(receiver).fuse();
+    let mut receiver_future = receiver.recv().boxed().fuse();
+    let mut ctrl_c_receiver_future = ctrl_c_receiver.recv().boxed().fuse();
+
     let task = select! {
         _ = start_task => {},
         _ = end_task => {},
-        _ = shut_off => {}, // TODO test shutoffsenders
+        _ = receiver_future => {}, // TODO test shutoffsenders
+        _ = ctrl_c_receiver_future => {}, // TODO test shutoffsenders
     };
     task
 }

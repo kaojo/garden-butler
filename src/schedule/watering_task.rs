@@ -1,11 +1,13 @@
-use crate::embedded::command::LayoutCommand;
+use std::pin::Pin;
+use std::time::Duration;
+
 use chrono::{NaiveTime, Timelike, Utc};
-use crossbeam::Sender;
 use futures::prelude::*;
 use futures::task::{Context, Poll};
 use futures::FutureExt;
-use std::pin::Pin;
-use std::time::Duration;
+use tokio::sync::mpsc::Sender;
+
+use crate::embedded::command::LayoutCommand;
 
 pub struct WateringTask {
     inner: Pin<Box<dyn Future<Output = ()> + Send>>,
@@ -15,7 +17,7 @@ impl WateringTask {
     pub fn new(
         layout_command: LayoutCommand,
         execution_time: NaiveTime,
-        command_sender: Sender<LayoutCommand>,
+        mut command_sender: Sender<LayoutCommand>,
     ) -> WateringTask {
         let task = tokio::time::interval(Duration::from_secs(1))
             .filter(move |_| {

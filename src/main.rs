@@ -15,15 +15,14 @@ extern crate tokio;
 
 use std::sync::{Arc, Mutex};
 
-use crossbeam::{Receiver, Sender};
 use futures::future::FusedFuture;
 use futures::{Future, FutureExt};
 use rumqtt::QoS;
 use serde::export::PhantomData;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::watch;
 
-use crate::communication::create_abortable_task;
 use app::App;
-
 use embedded::command::{LayoutCommand, LayoutCommandListener};
 use embedded::configuration::LayoutConfig;
 #[cfg(not(feature = "gpio"))]
@@ -36,6 +35,8 @@ use mqtt::configuration::MqttConfig;
 use mqtt::status::{LayoutConfigStatus, PinLayoutStatus, WateringScheduleConfigStatus};
 use mqtt::MqttSession;
 use schedule::{WateringScheduleConfigs, WateringScheduler};
+
+use crate::communication::create_abortable_task;
 
 mod app;
 mod communication;
@@ -55,34 +56,34 @@ async fn main() -> Result<(), ()> {
     let layout_config = LayoutConfig::default();
     let layout = create_pin_layout(layout_config.clone(), LAYOUT_TYPE);
 
-    // this vec stores all channels, this is needed so the sender and receiver don't become
-    // disconnected if any data is dropped
-    let ctrl_c_channels = Arc::new(Mutex::new(Vec::new()));
-
+    let (ctrl_c_sender, mut ctrl_c_receiver) = watch::channel("hello".to_string());
+    let _ = ctrl_c_receiver.recv().await;
     // command listening
     let (layout_command_sender, layout_command_receiver): (
         Sender<LayoutCommand>,
         Receiver<LayoutCommand>,
-    ) = crossbeam::unbounded();
+    ) = tokio::sync::mpsc::channel(16);
     let (layout_status_send_sender, layout_status_send_receiver): (
         Sender<Result<(), ()>>,
         Receiver<Result<(), ()>>,
-    ) = crossbeam::unbounded();
+    ) = tokio::sync::mpsc::channel(16);
 
     let layout_command_listener = LayoutCommandListener::new(
         Arc::clone(&layout),
-        layout_command_receiver.clone(),
+        layout_command_receiver,
         layout_status_send_sender.clone(),
     )
     .fuse();
 
-    spawn_task(Arc::clone(&ctrl_c_channels), layout_command_listener);
+    spawn_task(ctrl_c_receiver.clone(), layout_command_listener);
 
     // listen for physical button presses
     #[cfg(feature = "gpio")]
     {
-        let clone = layout.lock().unwrap();
-        clone.spawn_button_streams(Arc::clone(&ctrl_c_channels));
+        layout
+            .lock()
+            .unwrap()
+            .spawn_button_streams(ctrl_c_receiver.clone());
     }
 
     let mqtt_config = MqttConfig::default();
@@ -92,7 +93,7 @@ async fn main() -> Result<(), ()> {
         let mqtt_command_listener =
             MqttCommandListener::new(Arc::clone(&mqtt_session), layout_command_sender.clone())
                 .fuse();
-        spawn_task(Arc::clone(&ctrl_c_channels), mqtt_command_listener);
+        spawn_task(ctrl_c_receiver.clone(), mqtt_command_listener);
     }
 
     //spawn preconfigured automatic watering tasks
@@ -100,11 +101,7 @@ async fn main() -> Result<(), ()> {
         WateringScheduleConfigs::default(),
         layout_command_sender.clone(),
     );
-    let schedule_channels = scheduler.start();
-    let ctrl_c_channels_for_closure = Arc::clone(&ctrl_c_channels);
-    schedule_channels.into_iter().for_each(move |channel| {
-        ctrl_c_channels_for_closure.lock().unwrap().push(channel);
-    });
+    scheduler.start(ctrl_c_receiver.clone());
 
     let watering_scheduler = Arc::new(Mutex::new(scheduler));
 
@@ -114,12 +111,12 @@ async fn main() -> Result<(), ()> {
             Arc::clone(&layout),
             Arc::clone(&mqtt_session),
             mqtt_config.clone(),
-            layout_status_send_receiver.clone(),
+            layout_status_send_receiver,
         )
         .boxed()
         .fuse()
         .map(|_| ());
-        spawn_task(Arc::clone(&ctrl_c_channels), pin_layout_status);
+        spawn_task(ctrl_c_receiver.clone(), pin_layout_status);
     }
 
     // report automatic watering configuration
@@ -128,34 +125,25 @@ async fn main() -> Result<(), ()> {
         Arc::clone(&mqtt_session),
     )
     .fuse();
-    spawn_task(
-        Arc::clone(&ctrl_c_channels),
-        watering_schedule_config_status,
-    );
+    spawn_task(ctrl_c_receiver.clone(), watering_schedule_config_status);
 
     // report layout configuration
     let layout_config_status = LayoutConfigStatus::new(&layout_config, Arc::clone(&mqtt_session))
         .fuse()
         .map(|_| ());
-    spawn_task(Arc::clone(&ctrl_c_channels), layout_config_status);
+    spawn_task(ctrl_c_receiver.clone(), layout_config_status);
 
     report_online(Arc::clone(&mqtt_session));
 
-    tokio::spawn(App::start(
-        Arc::clone(&ctrl_c_channels),
-        (layout_status_send_sender, layout_status_send_receiver),
-    ))
-    .await
-    .unwrap()
+    tokio::spawn(App::start(ctrl_c_sender)).await.unwrap()
 }
 
 fn spawn_task(
-    ctrl_c_channels: Arc<Mutex<Vec<(Sender<String>, Receiver<String>)>>>,
+    ctrl_c_receiver: watch::Receiver<String>,
     task: impl Future<Output = ()> + Sized + Send + FusedFuture + Unpin + 'static,
 ) {
-    let (s, r) = crossbeam::unbounded();
-    ctrl_c_channels.lock().unwrap().push((s.clone(), r.clone()));
-    tokio::task::spawn(create_abortable_task(task, r));
+    let task1 = create_abortable_task(task, ctrl_c_receiver);
+    tokio::task::spawn(task1);
 }
 
 fn report_online(mqtt_session: Arc<Mutex<MqttSession>>) {

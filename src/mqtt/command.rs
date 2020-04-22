@@ -1,19 +1,19 @@
 use std::num::ParseIntError;
 use std::ops::Deref;
+use std::pin::Pin;
 use std::str::{FromStr, Utf8Error};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crossbeam::{Sender, TryRecvError};
 use futures::prelude::*;
 use futures::task::{Context, Poll};
+use futures::FutureExt;
 use rumqtt::{Notification, Publish, QoS};
+use tokio::sync::mpsc::Sender;
 
 use crate::embedded::command::LayoutCommand;
 use crate::embedded::ValvePinNumber;
 use crate::mqtt::MqttSession;
-use futures::FutureExt;
-use std::pin::Pin;
 
 pub struct MqttCommandListener {
     inner: Pin<Box<dyn Future<Output = ()> + Send>>,
@@ -22,7 +22,7 @@ pub struct MqttCommandListener {
 impl MqttCommandListener {
     pub fn new(
         mqtt_session: Arc<Mutex<MqttSession>>,
-        layout_command_sender: Sender<LayoutCommand>,
+        mut layout_command_sender: Sender<LayoutCommand>,
     ) -> MqttCommandListener {
         // listen to mqtt messages that send commands
         let mqtt_session_clone = Arc::clone(&mqtt_session);
@@ -81,7 +81,7 @@ impl MqttCommandListener {
     }
 }
 
-fn log_commands(n: &Result<Notification, TryRecvError>) -> () {
+fn log_commands(n: &Result<Notification, crossbeam::TryRecvError>) -> () {
     match n {
         Ok(r) => {
             println!("{:?}", r);

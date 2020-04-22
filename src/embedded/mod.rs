@@ -1,8 +1,9 @@
-use crate::embedded::configuration::LayoutConfig;
 #[cfg(feature = "gpio")]
 use core::convert;
 use core::fmt;
 use std::sync::{Arc, Mutex};
+
+use crate::embedded::configuration::LayoutConfig;
 
 pub mod command;
 pub mod configuration;
