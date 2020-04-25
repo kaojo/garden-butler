@@ -15,7 +15,7 @@ serde = { version = "1.0", features = ["rc"] }
 serde_json = { version = "1.0" }
 serde_derive = { version = "1.0", features = ["deserialize_in_place"] }
 futures = "0.3"
-tokio = {version = "0.2", features = ["full", "signal", "sync", "time"]}
+tokio = {version = "0.2", features = ["rt-core", "macros", "stream", "signal", "sync", "time"]}
 config = {version = "0.9", features = ["json"]}
 chrono = { version = "0.4", features = ["serde"] }
 rumqtt = "0.31"

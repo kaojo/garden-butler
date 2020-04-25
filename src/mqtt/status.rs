@@ -5,12 +5,13 @@ use std::sync::{Arc, Mutex};
 use chrono::Local;
 use futures::prelude::*;
 use rumqtt::QoS;
+use tokio::sync::mpsc;
 
 use crate::embedded::configuration::LayoutConfig;
 use crate::embedded::{LayoutStatus, PinLayout, ToggleValve};
 use crate::mqtt::configuration::MqttConfig;
 use crate::mqtt::MqttSession;
-use crate::schedule::WateringScheduler;
+use crate::schedule::WateringScheduleConfigs;
 
 pub struct PinLayoutStatus {}
 
@@ -19,7 +20,7 @@ impl PinLayoutStatus {
         layout: Arc<Mutex<T>>,
         mqtt_session: Arc<Mutex<MqttSession>>,
         mqtt_config: MqttConfig,
-        send_layout_status_receiver: tokio::sync::mpsc::Receiver<Result<(), ()>>,
+        send_layout_status_receiver: mpsc::Receiver<Result<(), ()>>,
     ) -> ()
     where
         T: PinLayout<U> + Send + 'static,
@@ -77,7 +78,7 @@ pub struct WateringScheduleConfigStatus {}
 
 impl WateringScheduleConfigStatus {
     pub async fn report(
-        watering_scheduler: Arc<Mutex<WateringScheduler>>,
+        watering_schedule_configs: Arc<Mutex<WateringScheduleConfigs>>,
         mqtt_session: Arc<Mutex<MqttSession>>,
     ) -> () {
         let mut session = mqtt_session.lock().unwrap();
@@ -86,7 +87,7 @@ impl WateringScheduleConfigStatus {
             session.get_client_id()
         );
         let message =
-            serde_json::to_string(watering_scheduler.lock().unwrap().get_config()).unwrap();
+            serde_json::to_string(watering_schedule_configs.lock().unwrap().deref()).unwrap();
         session
             .publish(topic, QoS::ExactlyOnce, true, message)
             .map(|_| ())

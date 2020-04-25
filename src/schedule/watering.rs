@@ -12,14 +12,14 @@ use crate::schedule::watering_task::WateringTask;
 use crate::schedule::ScheduleConfig;
 
 pub struct WateringScheduler {
-    configs: WateringScheduleConfigs,
+    configs: Arc<Mutex<WateringScheduleConfigs>>,
     senders: Arc<Mutex<HashMap<ValvePinNumber, Sender<()>>>>,
     command_sender: Sender<LayoutCommand>,
 }
 
 impl WateringScheduler {
     pub fn new(
-        configs: WateringScheduleConfigs,
+        configs: Arc<Mutex<WateringScheduleConfigs>>,
         command_sender: Sender<LayoutCommand>,
     ) -> WateringScheduler {
         let senders = Arc::new(Mutex::new(HashMap::new()));
@@ -42,12 +42,8 @@ impl WateringScheduler {
         }
     }
 
-    pub fn get_config(&self) -> &WateringScheduleConfigs {
-        &self.configs
-    }
-
     pub fn start(&mut self, ctrl_c_receiver: tokio::sync::watch::Receiver<String>) -> () {
-        for schedule in self.configs.get_schedules().iter() {
+        for schedule in self.configs.lock().unwrap().get_schedules().iter() {
             if schedule.is_enabled() {
                 println!(
                     "Creating watering schedule for valve {}",
