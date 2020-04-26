@@ -35,7 +35,7 @@ where
     layout: Arc<Mutex<T>>,
     valve_type: PhantomData<U>,
 
-    mqtt_config: MqttConfig,
+    mqtt_config: Arc<Mutex<MqttConfig>>,
     mqtt_session: Arc<Mutex<MqttSession>>,
 
     watering_schedule_config: Arc<Mutex<WateringScheduleConfigs>>,
@@ -69,9 +69,6 @@ where
         U: ToggleValve + Send + 'static,
     {
         let (ctrl_c_sender, mut ctrl_c_receiver) = watch::channel("hello".to_string());
-        let _ = async {
-            ctrl_c_receiver.recv().await;
-        }; // empty channel
 
         App {
             ctrl_c_sender,
@@ -83,7 +80,7 @@ where
             layout,
             valve_type,
 
-            mqtt_config,
+            mqtt_config: Arc::new(Mutex::new(mqtt_config)),
             mqtt_session,
 
             watering_schedule_config: Arc::new(Mutex::new(watering_schedule_config)),
@@ -104,14 +101,14 @@ where
         let (layout_status_send_sender, layout_status_send_receiver): (
             mpsc::Sender<Result<(), ()>>,
             mpsc::Receiver<Result<(), ()>>,
-        ) = tokio::sync::mpsc::channel(16);
+        ) = mpsc::channel(16);
 
         self.layout_status_send_sender = Some(layout_status_send_sender);
 
         let pin_layout_status = PinLayoutStatus::report(
             Arc::clone(&self.layout),
             Arc::clone(&self.mqtt_session),
-            self.mqtt_config.clone(),
+            Arc::clone(&self.mqtt_config),
             layout_status_send_receiver,
         )
         .boxed()
@@ -121,21 +118,21 @@ where
     }
 
     pub fn report_watering_configuration(&mut self) -> () {
-        let (watering_configuration_sender, watering_configuration_receiver): (
+        let (watering_configuration_status_sender, watering_configuration_status_receiver): (
             mpsc::Sender<()>,
             mpsc::Receiver<()>,
-        ) = tokio::sync::mpsc::channel(16);
+        ) = mpsc::channel(16);
 
-        let watering_schedule_config_status = WateringScheduleConfigStatus::report(
+        let task = WateringScheduleConfigStatus::report(
             Arc::clone(&self.watering_schedule_config),
             Arc::clone(&self.mqtt_session),
+            Arc::clone(&self.mqtt_config),
+            watering_configuration_status_receiver,
         )
         .boxed()
         .fuse();
-        spawn_task(
-            self.ctrl_c_receiver.clone(),
-            watering_schedule_config_status,
-        );
+
+        spawn_task(self.ctrl_c_receiver.clone(), task);
     }
 
     pub fn listen_to_layout_commands(&mut self) -> () {
@@ -155,6 +152,8 @@ where
             .fuse();
 
             spawn_task(self.ctrl_c_receiver.clone(), layout_command_listener);
+        } else {
+            println!("layout status sender not defined");
         }
     }
 
@@ -178,6 +177,8 @@ where
                 MqttCommandListener::new(Arc::clone(&self.mqtt_session), layout_command_tx.clone())
                     .fuse();
             spawn_task(self.ctrl_c_receiver.clone(), mqtt_command_listener);
+        } else {
+            println!("mqtt command sender not defined");
         }
     }
 
@@ -189,6 +190,8 @@ where
                 layout_command_tx.clone(),
             );
             scheduler.start(self.ctrl_c_receiver.clone());
+        } else {
+            println!("layout command sender not defined");
         }
     }
 

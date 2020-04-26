@@ -12,6 +12,8 @@ use crate::embedded::{LayoutStatus, PinLayout, ToggleValve};
 use crate::mqtt::configuration::MqttConfig;
 use crate::mqtt::MqttSession;
 use crate::schedule::WateringScheduleConfigs;
+use futures::stream::Map;
+use tokio::time::{Instant, Interval};
 
 pub struct PinLayoutStatus {}
 
@@ -19,19 +21,15 @@ impl PinLayoutStatus {
     pub async fn report<T, U>(
         layout: Arc<Mutex<T>>,
         mqtt_session: Arc<Mutex<MqttSession>>,
-        mqtt_config: MqttConfig,
-        send_layout_status_receiver: mpsc::Receiver<Result<(), ()>>,
+        mqtt_config: Arc<Mutex<MqttConfig>>,
+        report_status_rx: mpsc::Receiver<Result<(), ()>>,
     ) -> ()
     where
         T: PinLayout<U> + Send + 'static,
         U: ToggleValve + Send + 'static,
     {
-        let interval = tokio::time::interval(Duration::from_secs(
-            mqtt_config.status_publish_interval_secs.unwrap_or(60),
-        ))
-        .map(|_| ());
-        let mut interval_or_receiver =
-            stream::select(interval, send_layout_status_receiver.map(|_| ()));
+        let interval = get_publish_interval(&mqtt_config).map(|_| ());
+        let mut interval_or_receiver = stream::select(interval, report_status_rx.map(|_| ()));
 
         while let Some(_) = interval_or_receiver.next().await {
             let status = PinLayoutStatus::get_current_layout_status(&layout);
@@ -58,17 +56,20 @@ impl PinLayoutStatus {
 
     fn publish_status(
         mqtt_session: &Arc<Mutex<MqttSession>>,
-        mqtt_config: &MqttConfig,
+        mqtt_config: &Arc<Mutex<MqttConfig>>,
         status: &LayoutStatus,
     ) -> () {
-        let topic = format!("{}/garden-butler/status/layout", mqtt_config.client_id);
+        let topic = format!(
+            "{}/garden-butler/status/layout",
+            mqtt_config.lock().unwrap().client_id
+        );
         let message = serde_json::to_string(&status).unwrap();
         match mqtt_session
             .lock()
             .unwrap()
             .publish(topic, QoS::AtMostOnce, true, message)
         {
-            Ok(_) => {}
+            Ok(_) => println!("layout status published"),
             Err(e) => println!("mqtt publish error = {:?}", e),
         }
     }
@@ -80,19 +81,26 @@ impl WateringScheduleConfigStatus {
     pub async fn report(
         watering_schedule_configs: Arc<Mutex<WateringScheduleConfigs>>,
         mqtt_session: Arc<Mutex<MqttSession>>,
+        mqtt_config: Arc<Mutex<MqttConfig>>,
+        report_status_rx: mpsc::Receiver<()>,
     ) -> () {
-        let mut session = mqtt_session.lock().unwrap();
-        let topic = format!(
-            "{}/garden-butler/status/watering-schedule",
-            session.get_client_id()
-        );
-        let message =
-            serde_json::to_string(watering_schedule_configs.lock().unwrap().deref()).unwrap();
-        session
-            .publish(topic, QoS::ExactlyOnce, true, message)
-            .map(|_| ())
-            .map_err(|e| println!("error = {:?}", e))
-            .unwrap_or_default()
+        let interval = get_publish_interval(&mqtt_config).map(|_| ());
+        let mut interval_or_receiver = stream::select(interval, report_status_rx.map(|_| ()));
+
+        while let Some(_) = interval_or_receiver.next().await {
+            let mut session = mqtt_session.lock().unwrap();
+            let topic = format!(
+                "{}/garden-butler/status/watering-schedule",
+                session.get_client_id()
+            );
+            let message =
+                serde_json::to_string(watering_schedule_configs.lock().unwrap().deref()).unwrap();
+            session
+                .publish(topic, QoS::ExactlyOnce, true, message)
+                .map(|_| println!("watering configuration published"))
+                .map_err(|e| println!("error = {:?}", e))
+                .unwrap_or_default()
+        }
     }
 }
 
@@ -112,8 +120,19 @@ impl LayoutConfigStatus {
         let message = serde_json::to_string(guard.deref()).unwrap();
         session
             .publish(topic, QoS::ExactlyOnce, true, message)
-            .map(|_| ())
+            .map(|_| println!("layout configuration published"))
             .map_err(|e| println!("error = {:?}", e))
             .unwrap_or_default()
     }
+}
+
+fn get_publish_interval(mqtt_config: &Arc<Mutex<MqttConfig>>) -> Interval {
+    let interval = tokio::time::interval(Duration::from_secs(
+        mqtt_config
+            .lock()
+            .unwrap()
+            .status_publish_interval_secs
+            .unwrap_or(60),
+    ));
+    interval
 }

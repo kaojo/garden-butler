@@ -29,6 +29,7 @@ impl MqttCommandListener {
         let mut session = mqtt_session_clone.lock().unwrap();
         let mqtt_config = &session.config;
         let topic = format!("{}/garden-butler/command/#", &mqtt_config.client_id);
+        println!("{}", topic);
         session.subscribe(topic, QoS::AtLeastOnce).unwrap();
 
         let mqtt_session_2 = Arc::clone(&mqtt_session);
