@@ -69,15 +69,14 @@ async fn main() -> Result<(), ()> {
     app.report_watering_configuration();
 
     app.listen_to_layout_commands();
-
     #[cfg(feature = "gpio")]
     {
         app.listen_to_button_presses();
     }
+    app.start_watering_schedules();
+    app.listen_to_watering_config_commands();
 
     app.listen_to_mqtt_commands();
-
-    app.start_watering_schedules();
 
     app.report_online();
 

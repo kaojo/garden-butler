@@ -1,7 +1,7 @@
 use std::pin::Pin;
 use std::time::Duration;
 
-use chrono::{NaiveTime, Timelike, Utc};
+use chrono::{Local, NaiveTime, Timelike};
 use futures::prelude::*;
 use futures::task::{Context, Poll};
 use futures::FutureExt;
@@ -21,7 +21,7 @@ impl WateringTask {
     ) -> WateringTask {
         let task = tokio::time::interval(Duration::from_secs(1))
             .filter(move |_| {
-                let now = Utc::now().time();
+                let now = Local::now().time();
                 let now_seconds_precision =
                     NaiveTime::from_hms(now.hour(), now.minute(), now.second());
                 return future::ready(now_seconds_precision.eq(&execution_time));

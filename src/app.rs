@@ -3,7 +3,6 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
-use futures::future::FusedFuture;
 use futures::prelude::*;
 use rumqtt::QoS;
 use tokio::sync::{mpsc, watch};
@@ -18,7 +17,10 @@ use crate::mqtt::command::MqttCommandListener;
 use crate::mqtt::configuration::MqttConfig;
 use crate::mqtt::status::{LayoutConfigStatus, PinLayoutStatus, WateringScheduleConfigStatus};
 use crate::mqtt::MqttSession;
-use crate::schedule::{WateringScheduleConfigs, WateringScheduler};
+use crate::schedule::{
+    WateringConfigCommand, WateringConfigCommandListener, WateringScheduleConfigs,
+    WateringScheduler,
+};
 
 pub struct App<T, U>
 where
@@ -29,7 +31,10 @@ where
     ctrl_c_receiver: watch::Receiver<String>,
 
     layout_command_sender: Option<mpsc::Sender<LayoutCommand>>,
-    layout_status_send_sender: Option<mpsc::Sender<Result<(), ()>>>,
+    layout_status_send_sender: Option<mpsc::Sender<()>>,
+
+    watering_config_command_sender: Option<mpsc::Sender<WateringConfigCommand>>,
+    watering_config_status_sender: Option<mpsc::Sender<()>>,
 
     layout_config: Arc<Mutex<LayoutConfig>>,
     layout: Arc<Mutex<T>>,
@@ -39,6 +44,7 @@ where
     mqtt_session: Arc<Mutex<MqttSession>>,
 
     watering_schedule_config: Arc<Mutex<WateringScheduleConfigs>>,
+    watering_scheduler: Option<Arc<Mutex<WateringScheduler>>>,
 }
 
 #[cfg(feature = "gpio")]
@@ -68,13 +74,16 @@ where
         T: PinLayout<U> + Send + 'static,
         U: ToggleValve + Send + 'static,
     {
-        let (ctrl_c_sender, mut ctrl_c_receiver) = watch::channel("hello".to_string());
+        let (ctrl_c_sender, ctrl_c_receiver) = watch::channel("hello".to_string());
 
         App {
             ctrl_c_sender,
             ctrl_c_receiver,
             layout_command_sender: None,
             layout_status_send_sender: None,
+
+            watering_config_command_sender: None,
+            watering_config_status_sender: None,
 
             layout_config,
             layout,
@@ -84,6 +93,7 @@ where
             mqtt_session,
 
             watering_schedule_config: Arc::new(Mutex::new(watering_schedule_config)),
+            watering_scheduler: None,
         }
     }
 
@@ -91,16 +101,18 @@ where
         let layout_config_status = LayoutConfigStatus::report(
             Arc::clone(&self.layout_config),
             Arc::clone(&self.mqtt_session),
-        )
-        .boxed()
-        .fuse();
-        spawn_task(self.ctrl_c_receiver.clone(), layout_config_status);
+        );
+        spawn_task(
+            self.ctrl_c_receiver.clone(),
+            layout_config_status,
+            String::from("report_layout_config"),
+        );
     }
 
     pub fn report_pin_layout_status(&mut self) -> () {
         let (layout_status_send_sender, layout_status_send_receiver): (
-            mpsc::Sender<Result<(), ()>>,
-            mpsc::Receiver<Result<(), ()>>,
+            mpsc::Sender<()>,
+            mpsc::Receiver<()>,
         ) = mpsc::channel(16);
 
         self.layout_status_send_sender = Some(layout_status_send_sender);
@@ -111,10 +123,12 @@ where
             Arc::clone(&self.mqtt_config),
             layout_status_send_receiver,
         )
-        .boxed()
-        .fuse()
         .map(|_| ());
-        spawn_task(self.ctrl_c_receiver.clone(), pin_layout_status);
+        spawn_task(
+            self.ctrl_c_receiver.clone(),
+            pin_layout_status,
+            String::from("report_pin_layout_status"),
+        );
     }
 
     pub fn report_watering_configuration(&mut self) -> () {
@@ -123,16 +137,20 @@ where
             mpsc::Receiver<()>,
         ) = mpsc::channel(16);
 
+        self.watering_config_status_sender = Some(watering_configuration_status_sender);
+
         let task = WateringScheduleConfigStatus::report(
             Arc::clone(&self.watering_schedule_config),
             Arc::clone(&self.mqtt_session),
             Arc::clone(&self.mqtt_config),
             watering_configuration_status_receiver,
-        )
-        .boxed()
-        .fuse();
+        );
 
-        spawn_task(self.ctrl_c_receiver.clone(), task);
+        spawn_task(
+            self.ctrl_c_receiver.clone(),
+            task,
+            String::from("report_watering_configuration"),
+        );
     }
 
     pub fn listen_to_layout_commands(&mut self) -> () {
@@ -148,10 +166,43 @@ where
                 Arc::clone(&self.layout),
                 layout_command_receiver,
                 layout_status_tx.clone(),
-            )
-            .fuse();
+            );
 
-            spawn_task(self.ctrl_c_receiver.clone(), layout_command_listener);
+            spawn_task(
+                self.ctrl_c_receiver.clone(),
+                layout_command_listener,
+                String::from("listen_to_layout_commands"),
+            );
+        } else {
+            println!("layout status sender not defined");
+        }
+    }
+
+    pub fn listen_to_watering_config_commands(&mut self) -> () {
+        let (watering_config_command_sender, watering_config_command_receiver): (
+            mpsc::Sender<WateringConfigCommand>,
+            mpsc::Receiver<WateringConfigCommand>,
+        ) = tokio::sync::mpsc::channel(16);
+
+        self.watering_config_command_sender = Some(watering_config_command_sender.clone());
+
+        if let Some(watering_config_status_tx) = &self.watering_config_status_sender {
+            if let Some(watering_scheduler) = &self.watering_scheduler {
+                let task = WateringConfigCommandListener::listen_to_commands(
+                    Arc::clone(&self.watering_schedule_config),
+                    Arc::clone(watering_scheduler),
+                    watering_config_command_receiver,
+                    watering_config_status_tx.clone(),
+                );
+
+                spawn_task(
+                    self.ctrl_c_receiver.clone(),
+                    task,
+                    String::from("listen_to_watering_config_commands"),
+                );
+            } else {
+                println!("watering scheduler not defined")
+            }
         } else {
             println!("layout status sender not defined");
         }
@@ -172,24 +223,26 @@ where
     }
 
     pub fn listen_to_mqtt_commands(&self) -> () {
-        if let Some(layout_command_tx) = &self.layout_command_sender {
-            let mqtt_command_listener =
-                MqttCommandListener::new(Arc::clone(&self.mqtt_session), layout_command_tx.clone())
-                    .fuse();
-            spawn_task(self.ctrl_c_receiver.clone(), mqtt_command_listener);
-        } else {
-            println!("mqtt command sender not defined");
-        }
+        let mqtt_command_listener = MqttCommandListener::new(
+            Arc::clone(&self.mqtt_session),
+            Arc::clone(&self.mqtt_config),
+            &self.layout_command_sender,
+            &self.watering_config_command_sender,
+        );
+        spawn_task(
+            self.ctrl_c_receiver.clone(),
+            mqtt_command_listener,
+            String::from("listen_to_mqtt_commands"),
+        );
     }
 
-    pub fn start_watering_schedules(&self) -> () {
+    pub fn start_watering_schedules(&mut self) -> () {
         //spawn preconfigured automatic watering tasks
         if let Some(layout_command_tx) = &self.layout_command_sender {
-            let mut scheduler = WateringScheduler::new(
-                Arc::clone(&self.watering_schedule_config),
-                layout_command_tx.clone(),
-            );
-            scheduler.start(self.ctrl_c_receiver.clone());
+            let mut scheduler =
+                WateringScheduler::new(layout_command_tx.clone(), self.ctrl_c_receiver.clone());
+            scheduler.start(&self.watering_schedule_config);
+            self.watering_scheduler = Some(Arc::new(Mutex::new(scheduler)));
         } else {
             println!("layout command sender not defined");
         }
@@ -210,8 +263,10 @@ where
 
 fn spawn_task(
     ctrl_c_receiver: watch::Receiver<String>,
-    task: impl Future<Output = ()> + Sized + Send + FusedFuture + Unpin + 'static,
+    task: impl Future<Output = ()> + Sized + Send + 'static,
+    task_name: String,
 ) {
-    let task1 = create_abortable_task(task, ctrl_c_receiver);
+    println!("spawning task {}", task_name);
+    let task1 = create_abortable_task(task, task_name, ctrl_c_receiver);
     tokio::task::spawn(task1);
 }

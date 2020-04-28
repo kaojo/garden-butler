@@ -12,8 +12,7 @@ use crate::embedded::{LayoutStatus, PinLayout, ToggleValve};
 use crate::mqtt::configuration::MqttConfig;
 use crate::mqtt::MqttSession;
 use crate::schedule::WateringScheduleConfigs;
-use futures::stream::Map;
-use tokio::time::{Instant, Interval};
+use tokio::time::Interval;
 
 pub struct PinLayoutStatus {}
 
@@ -22,7 +21,7 @@ impl PinLayoutStatus {
         layout: Arc<Mutex<T>>,
         mqtt_session: Arc<Mutex<MqttSession>>,
         mqtt_config: Arc<Mutex<MqttConfig>>,
-        report_status_rx: mpsc::Receiver<Result<(), ()>>,
+        report_status_rx: mpsc::Receiver<()>,
     ) -> ()
     where
         T: PinLayout<U> + Send + 'static,
@@ -88,19 +87,28 @@ impl WateringScheduleConfigStatus {
         let mut interval_or_receiver = stream::select(interval, report_status_rx.map(|_| ()));
 
         while let Some(_) = interval_or_receiver.next().await {
-            let mut session = mqtt_session.lock().unwrap();
-            let topic = format!(
-                "{}/garden-butler/status/watering-schedule",
-                session.get_client_id()
-            );
-            let message =
-                serde_json::to_string(watering_schedule_configs.lock().unwrap().deref()).unwrap();
-            session
-                .publish(topic, QoS::ExactlyOnce, true, message)
-                .map(|_| println!("watering configuration published"))
-                .map_err(|e| println!("error = {:?}", e))
-                .unwrap_or_default()
+            let guard = watering_schedule_configs.lock().unwrap();
+            WateringScheduleConfigStatus::publish_status(&mqtt_session, &mqtt_config, guard.deref())
         }
+    }
+
+    fn publish_status(
+        mqtt_session: &Arc<Mutex<MqttSession>>,
+        mqtt_config: &Arc<Mutex<MqttConfig>>,
+        status: &WateringScheduleConfigs,
+    ) {
+        let topic = format!(
+            "{}/garden-butler/status/watering-schedule",
+            mqtt_config.lock().unwrap().client_id
+        );
+        let message = serde_json::to_string(status).unwrap();
+
+        let mut session = mqtt_session.lock().unwrap();
+        session
+            .publish(topic, QoS::ExactlyOnce, true, message)
+            .map(|_| println!("watering configuration published"))
+            .map_err(|e| println!("error = {:?}", e))
+            .unwrap_or_default()
     }
 }
 

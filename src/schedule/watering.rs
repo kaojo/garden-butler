@@ -5,34 +5,39 @@ use chrono::NaiveTime;
 use futures::prelude::*;
 use tokio::sync::mpsc::Sender;
 
+use crate::communication::get_ctrl_c_future;
 use crate::embedded::command::LayoutCommand;
 use crate::embedded::ValvePinNumber;
 use crate::schedule::configuration::WateringScheduleConfigs;
 use crate::schedule::watering_task::WateringTask;
-use crate::schedule::ScheduleConfig;
+use crate::schedule::{ScheduleConfig, WateringScheduleConfig};
 
 pub struct WateringScheduler {
-    configs: Arc<Mutex<WateringScheduleConfigs>>,
-    senders: Arc<Mutex<HashMap<ValvePinNumber, Sender<()>>>>,
+    senders: Arc<Mutex<HashMap<WateringScheduleConfig, Sender<()>>>>,
+    ctrl_c_receiver: tokio::sync::watch::Receiver<String>,
     command_sender: Sender<LayoutCommand>,
 }
 
 impl WateringScheduler {
     pub fn new(
-        configs: Arc<Mutex<WateringScheduleConfigs>>,
         command_sender: Sender<LayoutCommand>,
+        ctrl_c_receiver: tokio::sync::watch::Receiver<String>,
     ) -> WateringScheduler {
         let senders = Arc::new(Mutex::new(HashMap::new()));
         WateringScheduler {
             senders,
             command_sender,
-            configs,
+            ctrl_c_receiver,
         }
     }
 
-    /// TODO test method
-    pub fn delete_schedule(&mut self, valve_pin: &ValvePinNumber) -> Result<(), ()> {
-        let sender = self.senders.lock().unwrap().remove(valve_pin);
+    pub fn start_schedule(&mut self, schedule: &WateringScheduleConfig) -> Result<(), ()> {
+        self.spawn_schedule_task(schedule);
+        Ok(())
+    }
+
+    pub fn stop_schedule(&mut self, schedule: &WateringScheduleConfig) -> Result<(), ()> {
+        let sender = self.senders.lock().unwrap().remove(&schedule);
         match sender {
             None => Err(()),
             Some(mut s) => {
@@ -42,40 +47,41 @@ impl WateringScheduler {
         }
     }
 
-    pub fn start(&mut self, ctrl_c_receiver: tokio::sync::watch::Receiver<String>) -> () {
-        for schedule in self.configs.lock().unwrap().get_schedules().iter() {
+    pub fn start(&mut self, configs: &Arc<Mutex<WateringScheduleConfigs>>) -> () {
+        for schedule in configs.lock().unwrap().get_schedules().iter() {
             if schedule.is_enabled() {
-                println!(
-                    "Creating watering schedule for valve {}",
-                    schedule.get_valve()
-                );
-                let schedule_task = create_schedule(
-                    self.senders.clone(),
-                    self.command_sender.clone(),
-                    schedule.get_valve().clone(),
-                    schedule.get_schedule().clone(),
-                    ctrl_c_receiver.clone(),
-                )
-                .boxed()
-                .fuse();
-
-                tokio::task::spawn(schedule_task);
+                self.spawn_schedule_task(schedule);
             }
         }
+    }
+
+    fn spawn_schedule_task(&mut self, schedule: &WateringScheduleConfig) {
+        println!(
+            "Creating watering schedule for valve {}",
+            schedule.get_valve()
+        );
+        let schedule_task = create_schedule(
+            Arc::clone(&self.senders),
+            self.command_sender.clone(),
+            schedule.clone(),
+            self.ctrl_c_receiver.clone(),
+        )
+        .boxed()
+        .fuse();
+        tokio::task::spawn(schedule_task);
     }
 }
 
 async fn create_schedule(
-    senders: Arc<Mutex<HashMap<ValvePinNumber, tokio::sync::mpsc::Sender<()>>>>,
+    senders: Arc<Mutex<HashMap<WateringScheduleConfig, tokio::sync::mpsc::Sender<()>>>>,
     command_sender: Sender<LayoutCommand>,
-    valve_pin_num: u8,
-    schedule_config: ScheduleConfig,
-    mut ctrl_c_receiver: tokio::sync::watch::Receiver<String>,
+    schedule_config: WateringScheduleConfig,
+    ctrl_c_receiver: tokio::sync::watch::Receiver<String>,
 ) -> () {
-    let number = ValvePinNumber(valve_pin_num);
+    let number = ValvePinNumber(schedule_config.get_valve());
 
-    let start_time: NaiveTime = get_schedule_start_time(&schedule_config);
-    let end_time = get_schedule_end_time(&schedule_config);
+    let start_time: NaiveTime = get_schedule_start_time(&schedule_config.get_schedule());
+    let end_time = get_schedule_end_time(&schedule_config.get_schedule());
 
     let mut start_task = WateringTask::new(
         LayoutCommand::Open(number),
@@ -91,17 +97,16 @@ async fn create_schedule(
     .fuse();
 
     let (sender, mut receiver) = tokio::sync::mpsc::channel(16);
-    senders.lock().unwrap().insert(number, sender);
+    senders.lock().unwrap().insert(schedule_config, sender);
     let mut receiver_future = receiver.recv().boxed().fuse();
-    let mut ctrl_c_receiver_future = ctrl_c_receiver.recv().boxed().fuse();
+    let mut ctrl_c_receiver_future = get_ctrl_c_future(ctrl_c_receiver);
 
-    let task = select! {
+    select! {
         _ = start_task => {},
         _ = end_task => {},
         _ = receiver_future => {}, // TODO test shutoffsenders
         _ = ctrl_c_receiver_future => {}, // TODO test shutoffsenders
     };
-    task
 }
 
 fn get_schedule_start_time(config: &ScheduleConfig) -> NaiveTime {

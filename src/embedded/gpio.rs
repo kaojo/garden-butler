@@ -144,11 +144,13 @@ impl GpioPinLayout {
                             let mut clone_raw = clone.lock().unwrap();
                             clone_raw.toggle().expect("button stream error");
                             future::ready(())
-                        })
-                        .boxed()
-                        .fuse();
+                        });
 
-                    let task = create_abortable_task(button_stream, ctrl_c_receiver.clone());
+                    let task = create_abortable_task(
+                        button_stream,
+                        "button_stream".to_string(),
+                        ctrl_c_receiver.clone(),
+                    );
                     tokio::spawn(task);
                 }
             }

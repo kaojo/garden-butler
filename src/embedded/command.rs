@@ -22,7 +22,7 @@ impl LayoutCommandListener {
     pub fn new<T, U>(
         layout: Arc<Mutex<T>>,
         receiver: Receiver<LayoutCommand>,
-        mut layout_status_sender: Sender<Result<(), ()>>,
+        mut layout_status_sender: Sender<()>,
     ) -> Self
     where
         T: PinLayout<U> + Send + 'static,
@@ -60,7 +60,7 @@ impl LayoutCommandListener {
                 future::ok(())
             })
             .for_each(move |_| {
-                let _ = layout_status_sender.try_send(Ok(())).map_err(|e| {
+                let _ = layout_status_sender.try_send(()).map_err(|e| {
                     println!("error sending signal for layout status update. = {}", e)
                 });
                 future::ready(())

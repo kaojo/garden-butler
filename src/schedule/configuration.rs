@@ -7,6 +7,34 @@ impl WateringScheduleConfigs {
     pub fn get_schedules(&self) -> &[WateringScheduleConfig] {
         &self.schedules
     }
+
+    pub fn enable_schedule(
+        &mut self,
+        schedule: &WateringScheduleConfig,
+    ) -> Result<WateringScheduleConfig, ()> {
+        Ok(schedule.clone())
+    }
+
+    pub fn disable_schedule(
+        &mut self,
+        schedule: &WateringScheduleConfig,
+    ) -> Result<WateringScheduleConfig, ()> {
+        Ok(schedule.clone())
+    }
+
+    pub fn delete_schedule(
+        &mut self,
+        schedule: &WateringScheduleConfig,
+    ) -> Result<WateringScheduleConfig, ()> {
+        Ok(schedule.clone())
+    }
+
+    pub fn create_schedule(
+        &mut self,
+        schedule: WateringScheduleConfig,
+    ) -> Result<WateringScheduleConfig, ()> {
+        Ok(schedule.clone())
+    }
 }
 
 impl Default for WateringScheduleConfigs {
@@ -28,7 +56,7 @@ impl Default for WateringScheduleConfigs {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct WateringScheduleConfig {
     schedule: ScheduleConfig,
     valve: u8,
@@ -47,7 +75,7 @@ impl WateringScheduleConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ScheduleConfig {
     start_hour: u8,
     start_minute: u8,
