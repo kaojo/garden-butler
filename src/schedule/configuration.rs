@@ -1,6 +1,8 @@
+use std::io::Write;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WateringScheduleConfigs {
-    schedules: Vec<WateringScheduleConfig>,
+    pub schedules: Vec<WateringScheduleConfig>,
 }
 
 impl WateringScheduleConfigs {
@@ -12,28 +14,83 @@ impl WateringScheduleConfigs {
         &mut self,
         schedule: &WateringScheduleConfig,
     ) -> Result<WateringScheduleConfig, ()> {
-        Ok(schedule.clone())
+        let existing_schedule: Option<&mut WateringScheduleConfig> = self.find_schedule(schedule);
+        match existing_schedule {
+            None => Err(()),
+            Some(s) => {
+                s.enabled = true;
+                self.save()?;
+                Ok(schedule.clone())
+            }
+        }
     }
 
     pub fn disable_schedule(
         &mut self,
         schedule: &WateringScheduleConfig,
     ) -> Result<WateringScheduleConfig, ()> {
-        Ok(schedule.clone())
+        let existing_schedule: Option<&mut WateringScheduleConfig> = self.find_schedule(schedule);
+        match existing_schedule {
+            None => Err(()),
+            Some(s) => {
+                s.enabled = false;
+                self.save()?;
+                Ok(schedule.clone())
+            }
+        }
     }
 
     pub fn delete_schedule(
         &mut self,
         schedule: &WateringScheduleConfig,
     ) -> Result<WateringScheduleConfig, ()> {
-        Ok(schedule.clone())
+        let index = self.find_schedule_index(schedule);
+        match index {
+            None => Err(()),
+            Some(i) => {
+                self.schedules.remove(i);
+                self.save()?;
+                Ok(schedule.clone())
+            }
+        }
     }
-
     pub fn create_schedule(
         &mut self,
         schedule: WateringScheduleConfig,
     ) -> Result<WateringScheduleConfig, ()> {
-        Ok(schedule.clone())
+        let existing_schedule: Option<&mut WateringScheduleConfig> = self.find_schedule(&schedule);
+        match existing_schedule {
+            None => {
+                self.schedules.push(schedule.clone());
+                self.save()?;
+                Ok(schedule.clone())
+            }
+            Some(_) => Err(()),
+        }
+    }
+
+    fn find_schedule(
+        &mut self,
+        schedule: &WateringScheduleConfig,
+    ) -> Option<&mut WateringScheduleConfig> {
+        let index = self.find_schedule_index(schedule);
+        index.and_then(move |i| self.schedules.get_mut(i))
+    }
+
+    fn find_schedule_index(&self, schedule: &WateringScheduleConfig) -> Option<usize> {
+        let index = self
+            .schedules
+            .iter()
+            .position(|item| item.valve == schedule.valve && item.schedule == schedule.schedule);
+        index
+    }
+
+    fn save(&self) -> Result<(), ()> {
+        let json_string = serde_json::to_string(self).map_err(|_| ())?;
+        let mut file = std::fs::File::create("watering-schedules.json").map_err(|_| ())?;
+        file.write(json_string.as_bytes())
+            .map(|_| ())
+            .map_err(|_| ())
     }
 }
 
@@ -60,7 +117,7 @@ impl Default for WateringScheduleConfigs {
 pub struct WateringScheduleConfig {
     schedule: ScheduleConfig,
     valve: u8,
-    enabled: bool,
+    pub enabled: bool,
 }
 
 impl WateringScheduleConfig {
