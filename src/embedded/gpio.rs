@@ -101,14 +101,14 @@ impl GpioPinLayout {
             set_pin_value(&running_led, 1);
             set_pin_value(&error_led, 1);
             for v in valves.iter() {
-                v.lock().unwrap().turn_on()?;
+                v.lock().unwrap().status_on()?;
             }
 
             sleep(Duration::from_millis(*millis));
             set_pin_value(&running_led, 0);
             set_pin_value(&error_led, 0);
             for v in valves.iter() {
-                v.lock().unwrap().turn_off()?;
+                v.lock().unwrap().status_off()?;
             }
 
             sleep(Duration::from_millis(200));
@@ -247,6 +247,16 @@ impl GpioToggleValve {
 
     pub fn get_status_led_pin(&self) -> &Option<Pin> {
         &self.status_led_pin
+    }
+
+    fn status_on(&mut self) -> Result<(), Error> {
+        set_pin_value(&self.status_led_pin, 1);
+        Ok(())
+    }
+
+    fn status_off(&mut self) -> Result<(), Error> {
+        set_pin_value(&self.status_led_pin, 0);
+        Ok(())
     }
 }
 
