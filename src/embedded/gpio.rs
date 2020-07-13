@@ -6,7 +6,7 @@ use futures::prelude::*;
 use sysfs_gpio::{Direction, Edge, Pin};
 
 use crate::communication::create_abortable_task;
-use crate::embedded::configuration::{LayoutConfig, ValveConfig};
+use crate::embedded::configuration::{LayoutConfig, PumpConfig, ValveConfig};
 use crate::embedded::ValveStatus::{CLOSED, OPEN};
 use crate::embedded::{
     Error, LayoutStatus, PinLayout, ToggleValve, ToggleValveStatus, ValvePinNumber,
@@ -15,6 +15,7 @@ use crate::embedded::{
 pub struct GpioPinLayout {
     power_pin: Option<Pin>,
     error_pin: Option<Pin>,
+    pump: Option<Arc<Mutex<GpioPumpPin>>>,
     toggle_valves: Vec<Arc<Mutex<GpioToggleValve>>>,
 }
 
@@ -27,6 +28,10 @@ impl PinLayout<GpioToggleValve> for GpioPinLayout {
             error_pin: config
                 .get_error_pin_num()
                 .map(|num| create_pin(num, Direction::Out)),
+            pump: config
+                .get_pump()
+                .as_ref()
+                .map(|pump_config| Arc::new(Mutex::new(create_pump_pin(pump_config)))),
             toggle_valves: config
                 .get_valves()
                 .iter()
@@ -82,6 +87,33 @@ impl PinLayout<GpioToggleValve> for GpioPinLayout {
                 .collect(),
         }
     }
+
+    fn turn_on(&mut self, valve_pin_num: ValvePinNumber) -> Result<(), Error> {
+        if let Some(pump) = &self.pump {
+            pump.lock().unwrap().turn_on()?;
+        }
+
+        self.find_pin(valve_pin_num)
+            .map_err(|_| Error::Unexpected(String::from("Valve not found.")))
+            .and_then(|valve| valve.lock().unwrap().turn_on())
+    }
+
+    fn turn_off(&mut self, valve_pin_num: ValvePinNumber) -> Result<(), Error> {
+        if let Some(pump) = &self.pump {
+            // only turn off if no other valve is turned on
+            let other_valve_open = self.toggle_valves.iter().any(|v| {
+                let valve = v.lock().unwrap();
+                valve.valve_pin_number != valve_pin_num && valve.valve_pin.get_value().unwrap() == 1
+            });
+            if !other_valve_open {
+                pump.lock().unwrap().turn_off()?;
+            }
+        }
+
+        self.find_pin(valve_pin_num)
+            .map_err(|_| Error::Unexpected(String::from("Valve not found.")))
+            .and_then(|valve| valve.lock().unwrap().turn_off())
+    }
 }
 
 impl Drop for GpioPinLayout {
@@ -122,39 +154,33 @@ impl GpioPinLayout {
         Ok(())
     }
 
-    pub fn spawn_button_streams(
-        &self,
-        ctrl_c_receiver: tokio::sync::watch::Receiver<String>,
-    ) -> () {
+    pub fn spawn_button_streams(&self, ctrl_c_receiver: tokio::sync::watch::Receiver<String>) {
         let valve_pins = self.get_valve_pins();
         let mut valves: Vec<Arc<Mutex<GpioToggleValve>>> = Vec::new();
         for pin in valve_pins {
             valves.push(Arc::clone(&pin))
         }
-        return {
-            for toggle_valve in valves {
-                let toggle_valve_raw = toggle_valve.lock().unwrap();
-                if let Some(button_pin) = toggle_valve_raw.get_button_pin() {
-                    let clone = Arc::clone(&toggle_valve);
-                    let button_stream = button_pin
-                        .get_value_stream()
-                        .expect("Expect a valid value stream.")
-                        .map_err(|err| Error::from(err))
-                        .for_each(move |_val| {
-                            let mut clone_raw = clone.lock().unwrap();
-                            clone_raw.toggle().expect("button stream error");
-                            future::ready(())
-                        });
+        for toggle_valve in valves {
+            let toggle_valve_raw = toggle_valve.lock().unwrap();
+            if let Some(button_pin) = toggle_valve_raw.get_button_pin() {
+                let clone = Arc::clone(&toggle_valve);
+                let button_stream = button_pin
+                    .get_value_stream()
+                    .expect("Expect a valid value stream.")
+                    .for_each(move |_val| {
+                        let mut clone_raw = clone.lock().unwrap();
+                        clone_raw.toggle().expect("button stream error");
+                        future::ready(())
+                    });
 
-                    let task = create_abortable_task(
-                        button_stream,
-                        "button_stream".to_string(),
-                        ctrl_c_receiver.clone(),
-                    );
-                    tokio::spawn(task);
-                }
+                let task = create_abortable_task(
+                    button_stream,
+                    "button_stream".to_string(),
+                    ctrl_c_receiver.clone(),
+                );
+                tokio::spawn(task);
             }
-        };
+        }
     }
 
     pub fn get_valve_pins(&self) -> &Vec<Arc<Mutex<GpioToggleValve>>> {
@@ -211,9 +237,8 @@ impl ToggleValve for GpioToggleValve {
     fn toggle(&mut self) -> Result<(), Error> {
         let new_val = 1 - self.valve_pin.get_value()?;
         self.valve_pin.set_value(new_val)?;
-        match self.status_led_pin {
-            Some(status) => status.set_value(new_val)?,
-            None => (),
+        if let Some(status) = self.status_led_pin {
+            status.set_value(new_val)?
         }
         Ok(())
     }
@@ -260,25 +285,50 @@ impl GpioToggleValve {
     }
 }
 
+pub struct GpioPumpPin {
+    pump_pin: Pin,
+    status_led_pin: Option<Pin>,
+}
+
+impl GpioPumpPin {
+    pub fn turn_on(&mut self) -> Result<(), Error> {
+        self.pump_pin.set_value(1)?;
+        set_pin_value(&self.status_led_pin, 1);
+        Ok(())
+    }
+    pub fn turn_off(&mut self) -> Result<(), Error> {
+        self.pump_pin.set_value(0)?;
+        set_pin_value(&self.status_led_pin, 0);
+        Ok(())
+    }
+}
+
 fn create_pin(pin_num: u8, direction: Direction) -> Pin {
     let pin = Pin::new(pin_num as u64);
     pin.export().expect("GPIO error.");
     pin.set_direction(direction)
         .expect("Could not set gpio pin direction.");
-    match direction {
-        Direction::In => pin
-            .set_edge(Edge::RisingEdge)
-            .expect("Could not set gpio pin edge"),
-        _ => {}
+    if let Direction::In = direction {
+        pin.set_edge(Edge::RisingEdge)
+            .expect("Could not set gpio pin edge")
     }
     pin
 }
 
+fn create_pump_pin(pump_config: &PumpConfig) -> GpioPumpPin {
+    let pump_pin = create_pin(pump_config.get_power_pin_num(), Direction::Out);
+    let status_led_pin = pump_config
+        .get_status_led_pin_num()
+        .map(|num| create_pin(num, Direction::Out));
+    GpioPumpPin {
+        pump_pin,
+        status_led_pin,
+    }
+}
+
 fn set_pin_value(pin: &Option<Pin>, value: u8) {
-    match pin {
-        Some(p) => p
-            .set_value(value)
-            .expect("GPIO Pin is not working. Could not set value."),
-        _ => (),
+    if let Some(p) = pin {
+        p.set_value(value)
+            .expect("GPIO Pin is not working. Could not set value.")
     }
 }

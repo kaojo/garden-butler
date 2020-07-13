@@ -1,16 +1,20 @@
 {
-  "power" : 23,
-  "error" : 17,
-  "valves" : [
+  "power": 23,
+  "error": 17,
+  "valves": [
     {
-      "valve" : 27,
+      "valve": 27,
       "button": 22,
       "status_led": 24
     },
     {
-      "valve" : 10,
+      "valve": 10,
       "button": 9,
       "status_led": 11
     }
-  ]
+  ],
+  "pump": {
+    "power_pin": 99,
+    "status_led": 99
+  }
 }

@@ -24,7 +24,7 @@ impl WateringTask {
                 let now = Local::now().time();
                 let now_seconds_precision =
                     NaiveTime::from_hms(now.hour(), now.minute(), now.second());
-                return future::ready(now_seconds_precision.eq(&execution_time));
+                future::ready(now_seconds_precision.eq(&execution_time))
             })
             .for_each(move |_| {
                 command_sender

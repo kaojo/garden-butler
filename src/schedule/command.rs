@@ -21,7 +21,7 @@ impl WateringConfigCommandListener {
         watering_schedule: Arc<Mutex<WateringScheduler>>,
         mut receiver: mpsc::Receiver<WateringConfigCommand>,
         mut watering_config_status_tx: mpsc::Sender<()>,
-    ) -> () {
+    ) {
         while let Some(command) = receiver.next().await {
             println!("{:?}", command);
             let result: Result<(), ()> =

@@ -28,9 +28,8 @@ impl MqttCommandListener {
         layout_command_sender: &Option<Sender<LayoutCommand>>,
         watering_config_command_sender: &Option<Sender<WateringConfigCommand>>,
     ) -> MqttCommandListener {
-        let layout_command_tx = layout_command_sender.as_ref().map(|tx| tx.clone());
-        let watering_config_command_tx =
-            watering_config_command_sender.as_ref().map(|tx| tx.clone());
+        let layout_command_tx = layout_command_sender.as_ref().cloned();
+        let watering_config_command_tx = watering_config_command_sender.as_ref().cloned();
 
         subscribe_to_commands(&mqtt_session, &mqtt_config);
 
@@ -250,7 +249,7 @@ fn subscribe_to_commands(
         .unwrap();
 }
 
-fn log_commands(n: &Result<Notification, crossbeam::TryRecvError>) -> () {
+fn log_commands(n: &Result<Notification, crossbeam::TryRecvError>) {
     match n {
         Ok(r) => {
             println!("{:?}", r);
@@ -271,7 +270,7 @@ fn get_valve_pin_num_from_message(publish: &Publish) -> Result<ValvePinNumber, (
     std::str::from_utf8(publish.payload.deref())
         .map_err(|_| ())
         .and_then(|s| u8::from_str(s).map_err(|_| ()))
-        .map(|n| ValvePinNumber(n))
+        .map(ValvePinNumber)
 }
 
 fn get_schedule_config_from_message(publish: &Publish) -> Result<WateringScheduleConfig, ()> {

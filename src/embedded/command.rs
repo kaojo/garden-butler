@@ -28,44 +28,37 @@ impl LayoutCommandListener {
         T: PinLayout<U> + Send + 'static,
         U: ToggleValve + Send + 'static,
     {
-        let inner = receiver
-            .inspect(|n| println!("{:?}", n))
-            .then(move |command| {
-                match command {
-                    LayoutCommand::Open(pin_num) => {
-                        if let Ok(valve) = layout.lock().unwrap().find_pin(pin_num) {
-                            if let Err(e) = valve
-                                .lock()
-                                .unwrap()
-                                .turn_on()
-                                .map_err(|e| println!("command execution error = {:?}", e))
+        let inner =
+            receiver
+                .inspect(|n| println!("{:?}", n))
+                .then(move |command| {
+                    match command {
+                        LayoutCommand::Open(pin_num) => {
+                            if let Err(_e) =
+                                layout.lock().unwrap().turn_on(pin_num).map_err(|e| {
+                                    println!("turn on: command execution error = {:?}", e)
+                                })
                             {
-                                return future::err(e);
+                                return future::err(());
+                            }
+                        }
+                        LayoutCommand::Close(pin_num) => {
+                            if let Err(_e) = layout.lock().unwrap().turn_off(pin_num).map_err(|e| {
+                                println!("turn off: command execution error = {:?}", e)
+                            }) {
+                                return future::err(());
                             }
                         }
                     }
-                    LayoutCommand::Close(pin_num) => {
-                        if let Ok(valve) = layout.lock().unwrap().find_pin(pin_num) {
-                            if let Err(e) = valve
-                                .lock()
-                                .unwrap()
-                                .turn_off()
-                                .map_err(|e| println!("command execution error = {:?}", e))
-                            {
-                                return future::err(e);
-                            }
-                        }
-                    }
-                }
-                future::ok(())
-            })
-            .for_each(move |_| {
-                let _ = layout_status_sender.try_send(()).map_err(|e| {
-                    println!("error sending signal for layout status update. = {}", e)
-                });
-                future::ready(())
-            })
-            .boxed();
+                    future::ok(())
+                })
+                .for_each(move |_| {
+                    let _ = layout_status_sender.try_send(()).map_err(|e| {
+                        println!("error sending signal for layout status update. = {}", e)
+                    });
+                    future::ready(())
+                })
+                .boxed();
         LayoutCommandListener { inner }
     }
 }

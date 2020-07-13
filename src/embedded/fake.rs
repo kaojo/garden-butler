@@ -58,6 +58,20 @@ impl PinLayout<FakeToggleValve> for FakePinLayout {
                 .collect(),
         }
     }
+
+    fn turn_on(&mut self, valve_pin_num: ValvePinNumber) -> Result<(), Error> {
+        if let Ok(valve) = self.find_pin(valve_pin_num) {
+            valve.lock().unwrap().turn_on()?;
+        }
+        Ok(())
+    }
+
+    fn turn_off(&mut self, valve_pin_num: ValvePinNumber) -> Result<(), Error> {
+        if let Ok(valve) = self.find_pin(valve_pin_num) {
+            valve.lock().unwrap().turn_off()?;
+        }
+        Ok(())
+    }
 }
 
 pub struct FakeToggleValve {

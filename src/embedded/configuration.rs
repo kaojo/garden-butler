@@ -2,6 +2,7 @@
 pub struct LayoutConfig {
     power: Option<u8>,
     error: Option<u8>,
+    pump: Option<PumpConfig>,
     valves: Vec<ValveConfig>,
 }
 
@@ -33,6 +34,9 @@ impl LayoutConfig {
     pub fn get_valves(&self) -> &Vec<ValveConfig> {
         &self.valves
     }
+    pub fn get_pump(&self) -> &Option<PumpConfig> {
+        &self.pump
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -51,5 +55,20 @@ impl ValveConfig {
     }
     pub fn get_button_pin_num(&self) -> Option<u8> {
         self.button
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PumpConfig {
+    power_pin: u8,
+    status_led: Option<u8>,
+}
+
+impl PumpConfig {
+    pub fn get_power_pin_num(&self) -> u8 {
+        self.power_pin
+    }
+    pub fn get_status_led_pin_num(&self) -> Option<u8> {
+        self.status_led
     }
 }

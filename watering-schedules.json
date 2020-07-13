@@ -1,24 +1,24 @@
 {
   "schedules": [
     {
-      "valve": 10,
-      "enabled": true,
-      "schedule": {
-        "start_hour": 18,
-        "start_minute": 4,
-        "end_hour": 18,
-        "end_minute": 5
-      }
-    },
-    {
-      "valve": 27,
-      "enabled": true,
       "schedule": {
         "start_hour": 18,
         "start_minute": 4,
         "end_hour": 18,
         "end_minute": 6
-      }
+      },
+      "valve": 27,
+      "enabled": true
+    },
+    {
+      "schedule": {
+        "start_hour": 22,
+        "start_minute": 15,
+        "end_hour": 22,
+        "end_minute": 20
+      },
+      "valve": 10,
+      "enabled": true
     }
   ]
 }

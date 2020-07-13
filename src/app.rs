@@ -49,7 +49,7 @@ where
 
 #[cfg(feature = "gpio")]
 impl App<GpioPinLayout, GpioToggleValve> {
-    pub fn listen_to_button_presses(&self) -> () {
+    pub fn listen_to_button_presses(&self) {
         let guard = self.layout.lock().unwrap();
         guard
             .deref()
@@ -97,7 +97,7 @@ where
         }
     }
 
-    pub fn report_layout_config(&self) -> () {
+    pub fn report_layout_config(&self) {
         let layout_config_status = LayoutConfigStatus::report(
             Arc::clone(&self.layout_config),
             Arc::clone(&self.mqtt_session),
@@ -109,7 +109,7 @@ where
         );
     }
 
-    pub fn report_pin_layout_status(&mut self) -> () {
+    pub fn report_pin_layout_status(&mut self) {
         let (layout_status_send_sender, layout_status_send_receiver): (
             mpsc::Sender<()>,
             mpsc::Receiver<()>,
@@ -131,7 +131,7 @@ where
         );
     }
 
-    pub fn report_watering_configuration(&mut self) -> () {
+    pub fn report_watering_configuration(&mut self) {
         let (watering_configuration_status_sender, watering_configuration_status_receiver): (
             mpsc::Sender<()>,
             mpsc::Receiver<()>,
@@ -153,13 +153,13 @@ where
         );
     }
 
-    pub fn listen_to_layout_commands(&mut self) -> () {
+    pub fn listen_to_layout_commands(&mut self) {
         let (layout_command_sender, layout_command_receiver): (
             mpsc::Sender<LayoutCommand>,
             mpsc::Receiver<LayoutCommand>,
         ) = tokio::sync::mpsc::channel(16);
 
-        self.layout_command_sender = Some(layout_command_sender.clone());
+        self.layout_command_sender = Some(layout_command_sender);
 
         if let Some(layout_status_tx) = &self.layout_status_send_sender {
             let layout_command_listener = LayoutCommandListener::new(
@@ -178,13 +178,13 @@ where
         }
     }
 
-    pub fn listen_to_watering_config_commands(&mut self) -> () {
+    pub fn listen_to_watering_config_commands(&mut self) {
         let (watering_config_command_sender, watering_config_command_receiver): (
             mpsc::Sender<WateringConfigCommand>,
             mpsc::Receiver<WateringConfigCommand>,
         ) = tokio::sync::mpsc::channel(16);
 
-        self.watering_config_command_sender = Some(watering_config_command_sender.clone());
+        self.watering_config_command_sender = Some(watering_config_command_sender);
 
         if let Some(watering_config_status_tx) = &self.watering_config_status_sender {
             if let Some(watering_scheduler) = &self.watering_scheduler {
@@ -222,7 +222,7 @@ where
         }
     }
 
-    pub fn listen_to_mqtt_commands(&self) -> () {
+    pub fn listen_to_mqtt_commands(&self) {
         let mqtt_command_listener = MqttCommandListener::new(
             Arc::clone(&self.mqtt_session),
             Arc::clone(&self.mqtt_config),
@@ -236,7 +236,7 @@ where
         );
     }
 
-    pub fn start_watering_schedules(&mut self) -> () {
+    pub fn start_watering_schedules(&mut self) {
         //spawn preconfigured automatic watering tasks
         if let Some(layout_command_tx) = &self.layout_command_sender {
             let mut scheduler =

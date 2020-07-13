@@ -36,7 +36,7 @@ impl MqttSession {
     fn create_mqtt_options(config_clone: MqttConfig) -> MqttOptions {
         let cert_path = config_clone
             .cert_path
-            .unwrap_or("/app/root-ca.crt".to_string());
+            .unwrap_or_else(|| "/app/root-ca.crt".to_string());
         let cert = MqttSession::read_cert(cert_path);
         MqttOptions::new(
             config_clone.client_id.clone(),
@@ -44,8 +44,8 @@ impl MqttSession {
             config_clone.port.unwrap_or(8883),
         )
         .set_security_opts(SecurityOptions::UsernamePassword(
-            config_clone.username.unwrap_or("".to_string()),
-            config_clone.password.unwrap_or("".to_string()),
+            config_clone.username.unwrap_or_else(|| "".to_string()),
+            config_clone.password.unwrap_or_else(|| "".to_string()),
         ))
         .set_ca(cert)
         .set_last_will(device_offline_last_will(config_clone.client_id))

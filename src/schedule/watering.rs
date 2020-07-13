@@ -47,7 +47,7 @@ impl WateringScheduler {
         }
     }
 
-    pub fn start(&mut self, configs: &Arc<Mutex<WateringScheduleConfigs>>) -> () {
+    pub fn start(&mut self, configs: &Arc<Mutex<WateringScheduleConfigs>>) {
         for schedule in configs.lock().unwrap().get_schedules().iter() {
             if schedule.is_enabled() {
                 self.spawn_schedule_task(schedule);
@@ -63,7 +63,7 @@ impl WateringScheduler {
         let schedule_task = create_schedule(
             Arc::clone(&self.senders),
             self.command_sender.clone(),
-            schedule.clone(),
+            *schedule,
             self.ctrl_c_receiver.clone(),
         )
         .boxed()
@@ -77,7 +77,7 @@ async fn create_schedule(
     command_sender: Sender<LayoutCommand>,
     schedule_config: WateringScheduleConfig,
     ctrl_c_receiver: tokio::sync::watch::Receiver<String>,
-) -> () {
+) {
     let number = ValvePinNumber(schedule_config.get_valve());
 
     let start_time: NaiveTime = get_schedule_start_time(&schedule_config.get_schedule());

@@ -22,8 +22,7 @@ impl PinLayoutStatus {
         mqtt_session: Arc<Mutex<MqttSession>>,
         mqtt_config: Arc<Mutex<MqttConfig>>,
         report_status_rx: mpsc::Receiver<()>,
-    ) -> ()
-    where
+    ) where
         T: PinLayout<U> + Send + 'static,
         U: ToggleValve + Send + 'static,
     {
@@ -57,7 +56,7 @@ impl PinLayoutStatus {
         mqtt_session: &Arc<Mutex<MqttSession>>,
         mqtt_config: &Arc<Mutex<MqttConfig>>,
         status: &LayoutStatus,
-    ) -> () {
+    ) {
         let topic = format!(
             "{}/garden-butler/status/layout",
             mqtt_config.lock().unwrap().client_id
@@ -82,7 +81,7 @@ impl WateringScheduleConfigStatus {
         mqtt_session: Arc<Mutex<MqttSession>>,
         mqtt_config: Arc<Mutex<MqttConfig>>,
         report_status_rx: mpsc::Receiver<()>,
-    ) -> () {
+    ) {
         let interval = get_publish_interval(&mqtt_config).map(|_| ());
         let mut interval_or_receiver = stream::select(interval, report_status_rx.map(|_| ()));
 
@@ -115,10 +114,7 @@ impl WateringScheduleConfigStatus {
 pub struct LayoutConfigStatus {}
 
 impl LayoutConfigStatus {
-    pub async fn report(
-        layout: Arc<Mutex<LayoutConfig>>,
-        mqtt_session: Arc<Mutex<MqttSession>>,
-    ) -> () {
+    pub async fn report(layout: Arc<Mutex<LayoutConfig>>, mqtt_session: Arc<Mutex<MqttSession>>) {
         let mut session = mqtt_session.lock().unwrap();
         let topic = format!(
             "{}/garden-butler/status/layout-config",
@@ -135,12 +131,11 @@ impl LayoutConfigStatus {
 }
 
 fn get_publish_interval(mqtt_config: &Arc<Mutex<MqttConfig>>) -> Interval {
-    let interval = tokio::time::interval(Duration::from_secs(
+    tokio::time::interval(Duration::from_secs(
         mqtt_config
             .lock()
             .unwrap()
             .status_publish_interval_secs
             .unwrap_or(60),
-    ));
-    interval
+    ))
 }

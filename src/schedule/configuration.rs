@@ -20,7 +20,7 @@ impl WateringScheduleConfigs {
             Some(s) => {
                 s.enabled = true;
                 self.save()?;
-                Ok(schedule.clone())
+                Ok(*schedule)
             }
         }
     }
@@ -35,7 +35,7 @@ impl WateringScheduleConfigs {
             Some(s) => {
                 s.enabled = false;
                 self.save()?;
-                Ok(schedule.clone())
+                Ok(*schedule)
             }
         }
     }
@@ -50,7 +50,7 @@ impl WateringScheduleConfigs {
             Some(i) => {
                 self.schedules.remove(i);
                 self.save()?;
-                Ok(schedule.clone())
+                Ok(*schedule)
             }
         }
     }
@@ -63,7 +63,7 @@ impl WateringScheduleConfigs {
             None => {
                 self.schedules.push(schedule.clone());
                 self.save()?;
-                Ok(schedule.clone())
+                Ok(schedule)
             }
             Some(_) => Err(()),
         }
@@ -78,11 +78,9 @@ impl WateringScheduleConfigs {
     }
 
     fn find_schedule_index(&self, schedule: &WateringScheduleConfig) -> Option<usize> {
-        let index = self
-            .schedules
+        self.schedules
             .iter()
-            .position(|item| item.valve == schedule.valve && item.schedule == schedule.schedule);
-        index
+            .position(|item| item.valve == schedule.valve && item.schedule == schedule.schedule)
     }
 
     fn save(&self) -> Result<(), ()> {
