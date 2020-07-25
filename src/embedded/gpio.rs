@@ -164,12 +164,35 @@ impl GpioPinLayout {
             let toggle_valve_raw = toggle_valve.lock().unwrap();
             if let Some(button_pin) = toggle_valve_raw.get_button_pin() {
                 let clone = Arc::clone(&toggle_valve);
+                let pump_clone = self.pump.as_ref().map(|p| Arc::clone(p));
                 let button_stream = button_pin
                     .get_value_stream()
                     .expect("Expect a valid value stream.")
                     .for_each(move |_val| {
-                        let mut clone_raw = clone.lock().unwrap();
-                        clone_raw.toggle().expect("button stream error");
+                        println!(
+                            "Button {} got value {:?}",
+                            clone.lock().unwrap().valve_pin_number.0,
+                            _val
+                        );
+                        let mut valve = clone.lock().unwrap();
+                        let is_on = valve.is_on();
+                        match is_on {
+                            Ok(true) => {
+                                if let Some(pump) = &pump_clone {
+                                    let _ = pump.lock().unwrap().turn_off();
+                                }
+                                let _ = valve.turn_off();
+                            }
+                            Ok(false) => {
+                                if let Some(pump) = &pump_clone {
+                                    let _ = pump.lock().unwrap().turn_on();
+                                }
+                                let _ = valve.turn_on();
+                            }
+                            Err(_) => {
+                                // ignore errors
+                            }
+                        }
                         future::ready(())
                     });
 
@@ -234,13 +257,11 @@ impl ToggleValve for GpioToggleValve {
         Ok(())
     }
 
-    fn toggle(&mut self) -> Result<(), Error> {
-        let new_val = 1 - self.valve_pin.get_value()?;
-        self.valve_pin.set_value(new_val)?;
-        if let Some(status) = self.status_led_pin {
-            status.set_value(new_val)?
-        }
-        Ok(())
+    fn is_on(&self) -> Result<bool, Error> {
+        self.valve_pin
+            .get_value()
+            .map(|value| value == 1)
+            .map_err(|e| Error::Unexpected(e.to_string()))
     }
 
     fn get_valve_pin_num(&self) -> &ValvePinNumber {

@@ -26,7 +26,7 @@ pub trait PinLayout<T> {
 pub trait ToggleValve {
     fn turn_on(&mut self) -> Result<(), Error>;
     fn turn_off(&mut self) -> Result<(), Error>;
-    fn toggle(&mut self) -> Result<(), Error>;
+    fn is_on(&self) -> Result<bool, Error>;
     fn get_valve_pin_num(&self) -> &ValvePinNumber;
 }
 
