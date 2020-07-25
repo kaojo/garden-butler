@@ -30,7 +30,7 @@ pub trait ToggleValve {
     fn get_valve_pin_num(&self) -> &ValvePinNumber;
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum ValveStatus {
     OPEN,
     CLOSED,

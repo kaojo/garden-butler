@@ -92,18 +92,8 @@ impl ToggleValve for FakeToggleValve {
         Ok(())
     }
 
-    fn toggle(&mut self) -> Result<(), Error> {
-        match self.status {
-            OPEN => {
-                println!("Turning off valve {}", self.valve_pin_number.0);
-                self.status = CLOSED
-            }
-            CLOSED => {
-                println!("Turning on valve {}", self.valve_pin_number.0);
-                self.status = OPEN
-            }
-        }
-        Ok(())
+    fn is_on(&self) -> Result<bool, Error> {
+        Ok(self.status == OPEN)
     }
 
     fn get_valve_pin_num(&self) -> &ValvePinNumber {
