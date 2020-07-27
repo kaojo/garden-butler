@@ -74,12 +74,16 @@ impl MqttCommandListener {
                         }
                     }
                     Ok(Notification::Reconnection) => {
-                        let mut guard = mqtt_session_2.lock().unwrap();
-                        let topic = guard.config.client_id.clone() + "/garden-butler/status/health";
-                        guard
-                            .publish(topic, QoS::ExactlyOnce, true, "ONLINE")
-                            .map_err(|e| println!("error = {}", e))
-                            .unwrap_or(());
+                        {
+                            let mut guard = mqtt_session_2.lock().unwrap();
+                            let topic =
+                                guard.config.client_id.clone() + "/garden-butler/status/health";
+                            guard
+                                .publish(topic, QoS::ExactlyOnce, true, "ONLINE")
+                                .map_err(|e| println!("error = {}", e))
+                                .unwrap_or(());
+                        }
+                        subscribe_to_commands(&mqtt_session_2, &mqtt_config);
                     }
                     Err(_) => {}
                     _ => println!("other mqtt message"),
@@ -242,10 +246,12 @@ fn subscribe_to_commands(
         "{}/garden-butler/command/#",
         &mqtt_config.lock().unwrap().client_id
     );
+    println!("Subscribe to {}", topic);
     mqtt_session
         .lock()
         .unwrap()
         .subscribe(topic, QoS::AtLeastOnce)
+        .map_err(|e| println!("error = {:?}", e))
         .unwrap();
 }
 
